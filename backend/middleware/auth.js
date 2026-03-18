@@ -33,20 +33,22 @@ export const authenticate = (req, res, next) => {
     }
 
     // Verificar token
-    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-      if (err) {
-        return res.status(401).json({
-          success: false,
-          message: 'Token inválido ou expirado'
-        });
-      }
-
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      
       // Adicionar dados do usuário ao request
       req.user = decoded;
+      console.log('✅ Token validado para usuário:', decoded.email || decoded.id);
       next();
-    });
+    } catch (jwtError) {
+      console.log('❌ Token inválido:', jwtError.message);
+      return res.status(401).json({
+        success: false,
+        message: 'Token inválido ou expirado'
+      });
+    }
   } catch (error) {
-    console.error('Erro na autenticação:', error);
+    console.error('❌ Erro na autenticação:', error);
     return res.status(500).json({
       success: false,
       message: 'Erro ao verificar autenticação'

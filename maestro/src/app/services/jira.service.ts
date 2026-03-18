@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Observable, switchMap, from } from 'rxjs';
+import { Observable, switchMap, from, tap } from 'rxjs';
 import { environment } from '../../environments/environment';
 import * as ExcelJS from 'exceljs';
 
@@ -34,6 +34,11 @@ export class JiraService {
   private apiUrl = environment.apiUrl;
 
   constructor(private http: HttpClient) {}
+
+  private getAuthToken(): string | null {
+    // Prioriza a chave atual e mantém fallback para instalações antigas.
+    return localStorage.getItem('maestro_token') || localStorage.getItem('token');
+  }
 
 
   /**
@@ -146,13 +151,8 @@ export class JiraService {
     console.log('🎯 [JiraService] exportJiraReport iniciado');
     console.log('📡 Chamando backend:', `${this.apiUrl}/jira/issues`);
     
-    // Buscar token do localStorage
-    const token = localStorage.getItem('token');
-    const headers = new HttpHeaders({
-      'Authorization': `Bearer ${token}`
-    });
-
-    return this.http.get<BackendJiraResponse>(`${this.apiUrl}/jira/issues`, { headers }).pipe(
+    // O interceptor já adiciona o Authorization header automaticamente
+    return this.http.get<BackendJiraResponse>(`${this.apiUrl}/jira/issues`).pipe(
       switchMap((response) => {
         console.log('📥 [JiraService] Resposta do backend:', {
           success: response.success,
@@ -201,13 +201,8 @@ export class JiraService {
     console.log('🎯 [JiraService] exportContecReport iniciado');
     console.log('📡 Chamando backend:', `${this.apiUrl}/jira/contec`);
     
-    // Buscar token do localStorage
-    const token = localStorage.getItem('token');
-    const headers = new HttpHeaders({
-      'Authorization': `Bearer ${token}`
-    });
-
-    return this.http.get<BackendJiraResponse>(`${this.apiUrl}/jira/contec`, { headers }).pipe(
+    // O interceptor já adiciona o Authorization header automaticamente
+    return this.http.get<BackendJiraResponse>(`${this.apiUrl}/jira/contec`).pipe(
       switchMap((response) => {
         console.log('📥 [JiraService] Resposta do backend CONTEC:', {
           success: response.success,
@@ -264,17 +259,30 @@ export class JiraService {
   /**
    * Reprograma múltiplas issues do Jira com nova data
    */
-  reprogramarEmMassa(ids: string[], date: string): Observable<any> {
+  reprogramarEmMassa(ids: string[], date: string | null): Observable<any> {
     console.log('🚀 [JiraService] reprogramarEmMassa iniciado');
     console.log('📋 IDs:', ids);
-    console.log('📅 Data:', date);
+    console.log('📅 Data:', date === null ? '(LIMPAR CAMPO)' : date);
+    console.log('🔑 Token disponível:', !!this.getAuthToken());
+    console.log('🌐 URL:', `${this.apiUrl}/jira/reprogramar-massa`);
 
-    const token = localStorage.getItem('token');
-    const headers = new HttpHeaders({
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    });
-
-    return this.http.post(`${this.apiUrl}/jira/reprogramar-massa`, { ids, date }, { headers });
+    // O interceptor já adiciona o Authorization header automaticamente
+    // Não precisamos adicionar manualmente para evitar duplicação
+    return this.http.post<any>(`${this.apiUrl}/jira/reprogramar-massa`, { ids, date }).pipe(
+      tap({
+        next: (response) => {
+          console.log('📥 [JiraService] Resposta recebida:', response);
+          console.log('📊 [JiraService] Status:', response?.success ? 'Sucesso' : 'Falha');
+        },
+        error: (error) => {
+          console.error('❌ [JiraService] Erro na requisição:', error);
+          console.error('❌ [JiraService] Status code:', error?.status);
+          console.error('❌ [JiraService] Error message:', error?.message);
+        },
+        complete: () => {
+          console.log('✅ [JiraService] Observable completado com sucesso');
+        }
+      })
+    );
   }
 }

@@ -14,6 +14,26 @@ function formatJiraDate(rawDate) {
   return String(rawDate);
 }
 
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+const BLOCKED_REPORT_STATUS = 'RECEBIDO NAO LIBERADO';
+
+function isBlockedReportStatus(statusName, situacao) {
+  const normalizedStatus = normalizeText(statusName);
+  const normalizedSituacao = normalizeText(situacao);
+
+  return normalizedStatus.includes(BLOCKED_REPORT_STATUS)
+    || normalizedSituacao.includes(BLOCKED_REPORT_STATUS);
+}
+
 /**
  * Busca issues do Jira com paginação
  */
@@ -42,57 +62,73 @@ export const getJiraIssues = async (req, res) => {
     console.log('📡 URL:', url);
     console.log('📧 Email:', email);
     console.log('🔑 Token presente:', !!apiToken);
+    console.log('🔍 JQL:', jql);
 
-    let allIssues = [];
-    let startAt = 0;
-    const maxResults = 100;
-    let total = 0;
-
-    // Buscar todas as páginas
-    do {
-      console.log(`📄 Buscando issues - startAt: ${startAt}`);
-      
-      const response = await axios.get(url, {
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': `Basic ${auth}`
-        },
-        params: {
-          jql: jql,
-          startAt: startAt,
-          maxResults: maxResults,
-          fields: [
-            'issuetype',
-            'summary',
-            'status',
-            'customfield_10039',
-            'customfield_11298',
-            'customfield_10245'
-          ].join(',')
-        }
-      });
-
-      const issues = response.data.issues || [];
-      total = response.data.total || 0;
-      
-      console.log(`✅ Recebidas ${issues.length} issues. Total no Jira: ${total}`);
-      
-      allIssues = [...allIssues, ...issues];
-      startAt += maxResults;
-
-    } while (startAt < total);
-
-    console.log(`🎯 Total de issues coletadas: ${allIssues.length}`);
-
-    // Situações válidas
     const situacoesValidas = [
       '⚪️RECEBIDO ENCAMINHADO',
       '🟢RECEBIDO LIBERADO',
       '⚫Aguardando entrada'
     ];
 
-    // Processar e filtrar issues
+    let allIssues = [];
+    let nextPageToken = null;
+    let pageCount = 0;
+
+    // Buscar todas as páginas via nextPageToken (mesma lógica do script Python)
+    while (true) {
+      pageCount++;
+      console.log(`📄 [PÁGINA ${pageCount}] Buscando issues via nextPageToken...`);
+
+      const params = {
+        jql: jql,
+        maxResults: 100,
+        fields: [
+          'issuetype',
+          'summary',
+          'status',
+          'customfield_10039',
+          'customfield_11298',
+          'customfield_10245'
+        ].join(',')
+      };
+
+      if (nextPageToken) {
+        params.nextPageToken = nextPageToken;
+      }
+
+      const response = await axios.get(url, {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Basic ${auth}`
+        },
+        params
+      });
+
+      const issues = response.data.issues || [];
+      const isLast = !!response.data.isLast;
+
+      console.log(`✅ [PÁGINA ${pageCount}] Recebidas ${issues.length} issues`);
+      console.log(`📊 [PÁGINA ${pageCount}] Acumuladas até agora: ${allIssues.length + issues.length}`);
+
+      allIssues = [...allIssues, ...issues];
+
+      if (isLast) {
+        break;
+      }
+
+      nextPageToken = response.data.nextPageToken || null;
+      if (!nextPageToken) {
+        console.log('⚠️ nextPageToken ausente; encerrando paginação para evitar loop.');
+        break;
+      }
+    }
+
+    console.log(`✅ Paginação concluída! ${pageCount} páginas processadas`);
+    console.log(`🎯 Total de issues coletadas: ${allIssues.length}`);
+
+    // Processar issues com filtro de SITUAÇÃO (igual ao script de referência)
     const processedData = [];
+    let skippedBySituacao = 0;
     
     for (const issue of allIssues) {
       const fields = issue.fields;
@@ -107,10 +143,12 @@ export const getJiraIssues = async (req, res) => {
         situacao = situacaoRaw;
       }
 
-      // Filtrar situações
       if (!situacoesValidas.includes(situacao)) {
+        skippedBySituacao++;
         continue;
       }
+
+      const statusName = fields.status?.name || '';
 
       // VEÍCULO
       let veiculo = '';
@@ -136,13 +174,14 @@ export const getJiraIssues = async (req, res) => {
       processedData.push({
         key: key,
         resumo: resumoNumero,
-        status: fields.status?.name || '',
+        status: statusName,
         situacao: situacao,
         veiculo: veiculo,
         previsao: previsao
       });
     }
 
+    console.log(`⛔ Issues removidas por SITUAÇÃO fora da lista: ${skippedBySituacao}`);
     console.log(`✅ Issues filtradas: ${processedData.length}`);
 
     // Ordenar: priorizar veículos com marcas especiais (Land Rover, Toyota, Jaguar)
@@ -157,7 +196,7 @@ export const getJiraIssues = async (req, res) => {
       
       // Se A tem marca e B não, A vem primeiro
       if (temMarcaA && !temMarcaB) return -1;
-      // Se B tem marca e A não, B vem primeiro
+      // Se B tem marca e A não, B vem primei ro
       if (!temMarcaA && temMarcaB) return 1;
       
       // Se ambos têm ou ambos não têm marcas, ordenar alfabeticamente por veículo
@@ -212,18 +251,21 @@ export const getContecIssues = async (req, res) => {
     const url = `${jiraUrl}/rest/api/3/search/jql`;
     const auth = Buffer.from(`${email}:${apiToken}`).toString('base64');
 
-    console.log('📡 URL:', url);
-    console.log('📧 Email:', email);
-    console.log('🔑 Token presente:', !!apiToken);
+    console.log('📡 [CONTEC] URL:', url);
+    console.log('📧 [CONTEC] Email:', email);
+    console.log('🔑 [CONTEC] Token presente:', !!apiToken);
+    console.log('🔍 [CONTEC] JQL:', jql);
 
     let allIssues = [];
     let startAt = 0;
     const maxResults = 100;
     let total = 0;
+    let pageCount = 0;
 
     // Buscar todas as páginas
     do {
-      console.log(`📄 Buscando issues - startAt: ${startAt}`);
+      pageCount++;
+      console.log(`📄 [CONTEC PÁGINA ${pageCount}] Buscando issues - startAt: ${startAt}, maxResults: ${maxResults}`);
       
       const response = await axios.get(url, {
         headers: {
@@ -248,27 +290,28 @@ export const getContecIssues = async (req, res) => {
       const issues = response.data.issues || [];
       total = response.data.total || 0;
       
-      console.log(`✅ Recebidas ${issues.length} issues. Total no Jira: ${total}`);
+      console.log(`✅ [CONTEC PÁGINA ${pageCount}] Recebidas ${issues.length} issues`);
+      console.log(`📊 [CONTEC PÁGINA ${pageCount}] Total no Jira: ${total}`);
+      console.log(`📊 [CONTEC PÁGINA ${pageCount}] Acumuladas até agora: ${allIssues.length + issues.length}`);
       
       allIssues = [...allIssues, ...issues];
       startAt += maxResults;
+      
+      console.log(`🔄 [CONTEC PÁGINA ${pageCount}] Próximo startAt: ${startAt}`);
+      console.log(`🔄 [CONTEC PÁGINA ${pageCount}] Continuar? ${startAt < total ? 'SIM' : 'NÃO'}`);
 
     } while (startAt < total);
 
-    console.log(`🎯 Total de issues coletadas: ${allIssues.length}`);
-
-    // Situações válidas
-    const situacoesValidas = [
-      '⚪️RECEBIDO ENCAMINHADO',
-      '🟢RECEBIDO LIBERADO',
-      '⚫Aguardando entrada'
-    ];
+    console.log(`✅ [CONTEC] Paginação concluída! ${pageCount} páginas processadas`);
+    console.log(`🎯 [CONTEC] Total de issues coletadas: ${allIssues.length}`);
+    console.log(`🎯 [CONTEC] Total esperado do Jira: ${total}`);
 
     // Marcas CONTEC que devem ser filtradas
     const marcasContec = ['land rover', 'toyota', 'jaguar'];
 
-    // Processar e filtrar issues
+    // Processar e filtrar issues (apenas por marca CONTEC - sem filtro de situação)
     const processedData = [];
+    let skippedByStatus = 0;
     
     for (const issue of allIssues) {
       const fields = issue.fields;
@@ -283,8 +326,10 @@ export const getContecIssues = async (req, res) => {
         situacao = situacaoRaw;
       }
 
-      // Filtrar situações
-      if (!situacoesValidas.includes(situacao)) {
+      const statusName = fields.status?.name || '';
+
+      if (isBlockedReportStatus(statusName, situacao)) {
+        skippedByStatus++;
         continue;
       }
 
@@ -320,13 +365,14 @@ export const getContecIssues = async (req, res) => {
       processedData.push({
         key: key,
         resumo: resumoNumero,
-        status: fields.status?.name || '',
+        status: statusName,
         situacao: situacao,
         veiculo: veiculo,
         previsao: previsao
       });
     }
 
+    console.log(`⛔ [CONTEC] Issues removidas por status bloqueado: ${skippedByStatus}`);
     console.log(`✅ Issues CONTEC filtradas: ${processedData.length}`);
 
     // Ordenar alfabeticamente por veículo
@@ -363,10 +409,18 @@ export const getContecIssues = async (req, res) => {
  * Reprograma múltiplas issues do Jira com nova data de previsão
  */
 export const reprogramarEmMassa = async (req, res) => {
+  console.log('🎯 ============================================');
+  console.log('🎯 ENDPOINT /reprogramar-massa INICIADO');
+  console.log('🎯 ============================================');
+  
   try {
     console.log('🚀 Iniciando reprogramação em massa...');
 
+    const JIRA_UPDATE_TIMEOUT_MS = 45000; // 45 segundos por card
+
     const { ids, date } = req.body;
+    
+    console.log('📦 Body recebido:', { ids, date });
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({
@@ -375,12 +429,8 @@ export const reprogramarEmMassa = async (req, res) => {
       });
     }
 
-    if (!date) {
-      return res.status(400).json({
-        success: false,
-        message: 'Data é obrigatória'
-      });
-    }
+    // Data pode ser null para limpar o campo no Jira
+    const dateValue = date || null;
 
     const jiraUrl = process.env.JIRA_URL;
     const email = process.env.JIRA_EMAIL;
@@ -397,7 +447,7 @@ export const reprogramarEmMassa = async (req, res) => {
 
     const auth = Buffer.from(`${email}:${apiToken}`).toString('base64');
 
-    console.log('📅 Nova previsão:', date);
+    console.log('📅 Nova previsão:', dateValue === null ? '(LIMPAR CAMPO)' : dateValue);
     console.log('📋 IDs para atualizar:', ids.length);
     ids.forEach(id => console.log(`   • ${id}`));
 
@@ -408,13 +458,14 @@ export const reprogramarEmMassa = async (req, res) => {
     // Atualizar cada issue
     for (const issueId of ids) {
       try {
+        console.log(`🔄 Processando ${issueId}...`);
         const url = `${jiraUrl}/rest/api/3/issue/${issueId}`;
         
         const response = await axios.put(
           url,
           {
             fields: {
-              [campoPrevisao]: date
+              [campoPrevisao]: dateValue
             }
           },
           {
@@ -422,17 +473,19 @@ export const reprogramarEmMassa = async (req, res) => {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
               'Authorization': `Basic ${auth}`
-            }
+            },
+            timeout: JIRA_UPDATE_TIMEOUT_MS
           }
         );
 
         if (response.status === 204 || response.status === 200) {
           successCount++;
-          console.log(`✅ ${issueId} atualizado para ${date}`);
+          const msg = dateValue ? `atualizado para ${dateValue}` : 'data limpa';
+          console.log(`✅ ${issueId} ${msg}`);
           results.push({
             id: issueId,
             success: true,
-            message: `Atualizado para ${date}`
+            message: dateValue ? `Atualizado para ${dateValue}` : 'Data limpa'
           });
         } else {
           errorCount++;
@@ -445,7 +498,10 @@ export const reprogramarEmMassa = async (req, res) => {
         }
       } catch (error) {
         errorCount++;
-        const errorMessage = error.response?.data?.errorMessages?.join(', ') || error.message;
+        const errorMessage =
+          error.code === 'ECONNABORTED'
+            ? `Timeout ao atualizar issue após ${JIRA_UPDATE_TIMEOUT_MS / 1000}s`
+            : (error.response?.data?.errorMessages?.join(', ') || error.message);
         console.log(`❌ ${issueId} erro: ${errorMessage}`);
         results.push({
           id: issueId,
@@ -455,12 +511,13 @@ export const reprogramarEmMassa = async (req, res) => {
       }
     }
 
-    console.log('=' * 60);
+    console.log('='.repeat(60));
     console.log('REPROGRAMAÇÃO FINALIZADA');
     console.log(`✅ Sucesso: ${successCount}`);
     console.log(`❌ Erros: ${errorCount}`);
+    console.log('='.repeat(60));
 
-    return res.status(200).json({
+    const responseData = {
       success: true,
       message: `Reprogramação concluída: ${successCount} sucesso, ${errorCount} erros`,
       data: {
@@ -469,15 +526,30 @@ export const reprogramarEmMassa = async (req, res) => {
         total: ids.length,
         results
       }
-    });
+    };
+
+    console.log('📤 [RESPONSE] Preparando resposta...');
+    console.log('📦 [RESPONSE] Dados:', JSON.stringify(responseData, null, 2));
+    console.log('📡 [RESPONSE] Enviando HTTP 200...');
+    
+    res.status(200).json(responseData);
+    
+    console.log('✅ [RESPONSE] Resposta enviada com sucesso ao cliente!');
+    console.log('🎯 ============================================');
+    console.log('🎯 ENDPOINT /reprogramar-massa FINALIZADO');
+    console.log('🎯 ============================================');
 
   } catch (error) {
-    console.error('❌ Erro na reprogramação em massa:', error);
+    console.error('❌ [ERROR] Erro na reprogramação em massa:', error);
+    console.error('❌ [ERROR] Stack:', error.stack);
     
-    return res.status(500).json({
+    const errorResponse = {
       success: false,
       message: 'Erro ao reprogramar issues: ' + error.message
-    });
+    };
+    
+    console.log('📤 [ERROR] Enviando resposta de erro...');
+    res.status(500).json(errorResponse);
+    console.log('📤 [ERROR] Resposta de erro enviada');
   }
-};
-
+  };

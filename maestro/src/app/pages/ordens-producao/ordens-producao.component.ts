@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { JiraService } from '../../services/jira.service';
-import { finalize, take } from 'rxjs/operators';
+import { finalize, take, timeout } from 'rxjs/operators';
 
 @Component({
   selector: 'app-ordens-producao',
@@ -18,7 +18,11 @@ export class OrdensProducaoComponent implements OnInit {
   isProcessing = false;
   resultMessage = '';
   resultType: 'success' | 'error' | '' = '';
+  dateIsValid = true;
+  parsedIdsCount = 0;
   private readonly feedbackDelayMs = 3000;
+  private readonly requestTimeoutMs = 120000; // 2 minutos para operações longas
+  private processingGuardTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private jiraService: JiraService) {}
 
@@ -42,11 +46,39 @@ export class OrdensProducaoComponent implements OnInit {
     this.dateInput = '';
     this.resultMessage = '';
     this.resultType = '';
+    this.dateIsValid = true;
+    this.parsedIdsCount = 0;
   }
 
   closeReprogramModal(): void {
     this.showReprogramModal = false;
     this.isProcessing = false;
+    this.clearProcessingGuard();
+  }
+
+  private startProcessingGuard(): void {
+    this.clearProcessingGuard();
+    const guardTimeout = this.requestTimeoutMs + 10000; // 10s após o timeout da requisição
+    console.log(`⏰ Watchdog iniciado: ${guardTimeout / 1000}s`);
+    
+    this.processingGuardTimer = setTimeout(() => {
+      if (!this.isProcessing) {
+        console.log('✅ Watchdog: operação já finalizada');
+        return;
+      }
+
+      console.log('⚠️ Watchdog: forçando parada do loading');
+      this.isProcessing = false;
+      this.resultType = 'error';
+      this.resultMessage = 'A operação demorou mais do que o esperado. Verifique no Jira se as alterações foram aplicadas e tente novamente se necessário.';
+    }, guardTimeout);
+  }
+
+  private clearProcessingGuard(): void {
+    if (this.processingGuardTimer) {
+      clearTimeout(this.processingGuardTimer);
+      this.processingGuardTimer = null;
+    }
   }
 
   private scheduleResetAfterFeedback(): void {
@@ -57,6 +89,65 @@ export class OrdensProducaoComponent implements OnInit {
       this.resultMessage = '';
       this.resultType = '';
     }, this.feedbackDelayMs);
+  }
+
+  /**
+   * Atualiza contador de IDs detectados
+   */
+  onIdsInput(): void {
+    const ids = this.parseIds(this.idsInput);
+    this.parsedIdsCount = ids.length;
+  }
+
+  /**
+   * Aplica máscara de data DD/MM/AAAA enquanto o usuário digita
+   */
+  onDateInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    let value = input.value.replace(/\D/g, ''); // Remove tudo que não é número
+    
+    // Aplicar máscara DD/MM/AAAA
+    if (value.length > 0) {
+      if (value.length <= 2) {
+        value = value;
+      } else if (value.length <= 4) {
+        value = value.slice(0, 2) + '/' + value.slice(2);
+      } else {
+        value = value.slice(0, 2) + '/' + value.slice(2, 4) + '/' + value.slice(4, 8);
+      }
+    }
+    
+    this.dateInput = value;
+
+    input.value = value;
+    
+    // Validar data se estiver completa
+    if (value.length === 10) {
+      // Permitir 00/00/0000 como comando para limpar no envio
+      this.dateIsValid = value === '00/00/0000' || this.isValidDate(value);
+    } else {
+      this.dateIsValid = true; // Não marcar erro enquanto digita
+    }
+  }
+
+  /**
+   * Valida se a data está no formato correto e é uma data válida
+   */
+  private isValidDate(dateStr: string): boolean {
+    const match = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!match) return false;
+    
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    const year = parseInt(match[3], 10);
+    
+    if (month < 1 || month > 12) return false;
+    if (day < 1 || day > 31) return false;
+    if (year < 2000 || year > 2100) return false;
+    
+    // Verificar dias válidos por mês
+    const daysInMonth = new Date(year, month, 0).getDate();
+    return day <= daysInMonth;
   }
 
   parseIds(rawInput: string): string[] {
@@ -74,10 +165,10 @@ export class OrdensProducaoComponent implements OnInit {
 
     const cleaned = rawDate.trim();
     
-    // Tentar diferentes formatos
+    // Tentar diferentes formatos (priorizar DD/MM/YYYY da máscara)
     const formats = [
-      { regex: /^(\d{4})-(\d{2})-(\d{2})$/, format: (m: RegExpMatchArray) => `${m[1]}-${m[2]}-${m[3]}` }, // YYYY-MM-DD
       { regex: /^(\d{2})\/(\d{2})\/(\d{4})$/, format: (m: RegExpMatchArray) => `${m[3]}-${m[2]}-${m[1]}` }, // DD/MM/YYYY
+      { regex: /^(\d{4})-(\d{2})-(\d{2})$/, format: (m: RegExpMatchArray) => `${m[1]}-${m[2]}-${m[3]}` }, // YYYY-MM-DD
       { regex: /^(\d{2})-(\d{2})-(\d{4})$/, format: (m: RegExpMatchArray) => `${m[3]}-${m[2]}-${m[1]}` }  // DD-MM-YYYY
     ];
 
@@ -91,7 +182,24 @@ export class OrdensProducaoComponent implements OnInit {
     return null;
   }
 
-  reprogramar(): void {
+  canReprogramWithDate(): boolean {
+    const trimmedDate = this.dateInput.trim();
+
+    // Reprogramar só com data preenchida, completa e válida
+    if (!trimmedDate || trimmedDate === '00/00/0000') {
+      return false;
+    }
+
+    return this.dateIsValid && trimmedDate.length === 10;
+  }
+
+  removerDatas(): void {
+    this.dateInput = '00/00/0000';
+    this.dateIsValid = true;
+    this.reprogramar(true);
+  }
+
+  reprogramar(forceRemoveDates = false): void {
     console.log('🚀 Iniciando reprogramação...');
     
     // Parse IDs
@@ -102,28 +210,51 @@ export class OrdensProducaoComponent implements OnInit {
       return;
     }
 
-    // Normalize date
-    const date = this.normalizeDate(this.dateInput);
-    if (!date) {
-      this.resultType = 'error';
-      this.resultMessage = 'Data inválida. Use YYYY-MM-DD, DD/MM/YYYY ou DD-MM-YYYY';
-      return;
+    const isRemovingDates = forceRemoveDates || this.dateInput.trim() === '00/00/0000';
+
+    // Normalize date (permitir vazio para limpar o campo)
+    let date: string | null = null;
+    if (this.dateInput && this.dateInput.trim().length > 0) {
+      const cleanedDateInput = this.dateInput.trim();
+
+      // 00/00/0000 significa limpar a data no Jira
+      if (isRemovingDates || cleanedDateInput === '00/00/0000') {
+        date = null;
+      } else {
+        date = this.normalizeDate(cleanedDateInput);
+        if (!date) {
+          this.resultType = 'error';
+          this.resultMessage = 'Data inválida. Use YYYY-MM-DD, DD/MM/YYYY ou DD-MM-YYYY';
+          return;
+        }
+      }
     }
 
     this.isProcessing = true;
-    this.resultMessage = 'Processando...';
+    this.resultMessage = isRemovingDates
+      ? `Removendo data de ${ids.length} ${ids.length === 1 ? 'card' : 'cards'}... Aguarde.`
+      : `Processando ${ids.length} ${ids.length === 1 ? 'card' : 'cards'}... Aguarde.`;
     this.resultType = '';
+    this.startProcessingGuard();
 
+    console.log('📡 Enviando requisição para backend...');
+    console.log('⏱️ Timeout configurado:', this.requestTimeoutMs / 1000, 'segundos');
+    
     this.jiraService.reprogramarEmMassa(ids, date)
       .pipe(
+        timeout(this.requestTimeoutMs),
         take(1),
         finalize(() => {
+          console.log('🏁 Finalize executado - parando loading');
           this.isProcessing = false;
+          this.clearProcessingGuard();
         })
       )
       .subscribe({
         next: (response) => {
-          console.log('✅ Resposta:', response);
+          console.log('✅ Resposta completa recebida:', JSON.stringify(response, null, 2));
+          console.log('✅ Response type:', typeof response);
+          console.log('✅ Response.success:', response?.success);
 
           if (response?.success) {
             this.resultType = 'success';
@@ -141,9 +272,21 @@ export class OrdensProducaoComponent implements OnInit {
           this.scheduleResetAfterFeedback();
         },
         error: (error) => {
-          console.error('❌ Erro:', error);
+          console.error('❌ Erro capturado:', error);
+          console.error('❌ Error name:', error?.name);
+          console.error('❌ Error message:', error?.message);
           this.resultType = 'error';
-          this.resultMessage = error.error?.message || 'Erro ao conectar com o servidor';
+
+          if (error?.name === 'TimeoutError') {
+            console.error('⏱️ TIMEOUT: Operação excedeu', this.requestTimeoutMs / 1000, 'segundos');
+            this.resultMessage = `Tempo limite excedido (${this.requestTimeoutMs / 1000}s). A operação pode ainda estar em andamento no servidor. Verifique o Jira.`;
+          } else if (error?.status === 0) {
+            console.error('🔌 CONEXÃO: Sem resposta do servidor');
+            this.resultMessage = 'Não foi possível conectar ao servidor. Verifique sua conexão.';
+          } else {
+            this.resultMessage = error.error?.message || error?.message || 'Erro ao conectar com o servidor';
+          }
+
           this.scheduleResetAfterFeedback();
         }
       });
