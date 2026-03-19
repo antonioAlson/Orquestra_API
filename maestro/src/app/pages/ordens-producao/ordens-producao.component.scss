@@ -1,3 +1,23 @@
+// Barra de pesquisa
+.search-bar-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.search-bar {
+  padding: 4px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 14px;
+  width: 220px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-bar:focus {
+  border-color: #4caf50;
+}
 .ordens-container {
   padding: 0.75rem 2rem 2rem 2rem;
   background: #f3f4f6;
@@ -151,25 +171,27 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 1.75rem 2rem;
+  padding: 1.25rem 1.5rem;
   border-bottom: 1px solid #e5e7eb;
   background: linear-gradient(to bottom, #fafafa, #ffffff);
 
   .header-title {
     display: flex;
-    gap: 1rem;
+    gap: 0.75rem;
     align-items: flex-start;
 
     .header-icon {
       color: #2196f3;
       flex-shrink: 0;
       margin-top: 0.125rem;
+      width: 20px;
+      height: 20px;
     }
 
     div {
       h2 {
         margin: 0;
-        font-size: 1.375rem;
+        font-size: 1.125rem;
         font-weight: 600;
         color: #111827;
         line-height: 1.3;
@@ -177,7 +199,7 @@
 
       .subtitle {
         margin: 0.25rem 0 0 0;
-        font-size: 0.875rem;
+        font-size: 0.8125rem;
         color: #6b7280;
         font-weight: 400;
       }
@@ -207,7 +229,7 @@
 }
 
 .modal-body {
-  padding: 2rem;
+  padding: 1.25rem 1.5rem;
   overflow-y: auto;
   flex: 1;
   
@@ -429,15 +451,15 @@
   display: flex;
   justify-content: flex-end;
   gap: 0.875rem;
-  padding: 1.25rem 2rem;
+  padding: 1rem 1.5rem;
   border-top: 1px solid #e5e7eb;
   background: #fafafa;
 
   button {
-    padding: 0.75rem 1.5rem;
+    padding: 0.625rem 1.25rem;
     border: none;
     border-radius: 0.625rem;
-    font-size: 0.9375rem;
+    font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
@@ -762,9 +784,9 @@
   display: flex;
   background: #f9fafb;
   border-bottom: 2px solid #e5e7eb;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem;
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: #374151;
 }
 
@@ -775,7 +797,7 @@
 
 .table-row {
   display: flex;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem;
   border-bottom: 1px solid #f3f4f6;
   transition: background-color 0.15s ease;
   
@@ -789,7 +811,7 @@
 }
 
 .table-cell {
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: #4b5563;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -809,10 +831,10 @@
 
 .date-input {
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.375rem 0.5rem;
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   
   &:focus {

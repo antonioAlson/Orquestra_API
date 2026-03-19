@@ -2,17 +2,19 @@ import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { JiraService } from '../../services/jira.service';
+import { FilterIssuesPipe } from './filter-issues.pipe';
 import { finalize, take, timeout } from 'rxjs/operators';
 import JSZip from 'jszip';
 
 @Component({
   selector: 'app-ordens-producao',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, FilterIssuesPipe],
   templateUrl: './ordens-producao.component.html',
   styleUrl: './ordens-producao.component.scss'
 })
 export class OrdensProducaoComponent implements OnInit {
+    searchTerm: string = '';
   showReprogramModal = false;
   showPrintModal = false;
   showAlterarDatasModal = false;
