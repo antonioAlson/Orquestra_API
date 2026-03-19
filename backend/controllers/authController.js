@@ -206,3 +206,100 @@ export const getMe = async (req, res) => {
     });
   }
 };
+
+// Listar usuários cadastrados
+export const listUsers = async (_req, res) => {
+  try {
+    const result = await query(
+      'SELECT id, name, email, created_at FROM maestro.users ORDER BY created_at DESC'
+    );
+
+    const users = result.rows.map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.created_at
+    }));
+
+    res.json({
+      success: true,
+      data: { users }
+    });
+  } catch (error) {
+    console.error('Erro ao listar usuários:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao listar usuários'
+    });
+  }
+};
+
+// Criar usuário (uso de gestão interna)
+export const createUser = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Por favor, preencha todos os campos obrigatórios'
+      });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Por favor, insira um e-mail válido'
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'A senha deve ter no mínimo 6 caracteres'
+      });
+    }
+
+    const userExists = await query(
+      'SELECT id FROM maestro.users WHERE email = $1',
+      [email]
+    );
+
+    if (userExists.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Este e-mail já está cadastrado'
+      });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const result = await query(
+      'INSERT INTO maestro.users (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email, created_at',
+      [name, email, hashedPassword]
+    );
+
+    const user = result.rows[0];
+
+    res.status(201).json({
+      success: true,
+      message: 'Usuário cadastrado com sucesso',
+      data: {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          createdAt: user.created_at
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao criar usuário:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao cadastrar usuário'
+    });
+  }
+};

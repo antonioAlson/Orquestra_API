@@ -65,7 +65,13 @@ export class SidebarComponent {
     {
       icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
       label: 'Usuários',
-      route: '/users'
+      children: [
+        {
+          icon: 'M8 7a4 4 0 118 0 4 4 0 01-8 0zm-2 10a6 6 0 0112 0v1H6v-1z',
+          label: 'Gerenciar',
+          route: '/users'
+        }
+      ]
     },
     {
       icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',

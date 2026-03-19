@@ -527,24 +527,29 @@ export class OrdensProducaoComponent implements OnInit {
       .subscribe({
         next: (response: any) => {
           if (response.success) {
-            this.resultType = 'success';
-            this.resultMessage = `✓ ${response.data.successCount} data(s) atualizada(s) com sucesso!`;
-            
-            // Atualizar lista removendo as que foram salvas com sucesso
-            const successIds = response.data.results
-              .filter((r: any) => r.success)
-              .map((r: any) => r.id);
-            
-            this.issuesSemData = this.issuesSemData.filter(
-              issue => !successIds.includes(issue.key)
+            const successIds = new Set(
+              (response.data?.results || [])
+                .filter((r: any) => r.success)
+                .map((r: any) => r.id)
             );
-            
-            if (this.issuesSemData.length === 0) {
-              // Fechar modal após sucesso total
-              setTimeout(() => {
-                this.closeAlterarDatasModal();
-              }, 2000);
-            }
+
+            let updatedCardsCount = 0;
+            this.issuesSemData = this.issuesSemData.map(issue => {
+              if (!successIds.has(issue.key)) {
+                return issue;
+              }
+
+              updatedCardsCount += 1;
+              return {
+                ...issue,
+                previsao: issue.novaData,
+                novaData: ''
+              };
+            });
+
+            this.resultType = 'success';
+            this.resultMessage = `✓ ${updatedCardsCount} cartão(ões) atualizado(s) com sucesso!`;
+            this.refreshView();
           } else {
             this.resultType = 'error';
             this.resultMessage = response.message || 'Erro ao salvar datas';
@@ -559,6 +564,10 @@ export class OrdensProducaoComponent implements OnInit {
           }
         }
       });
+  }
+
+  hasPendingDateUpdates(): boolean {
+    return this.issuesSemData.some(issue => !!issue.novaData && issue.novaData.length === 10);
   }
 
   private convertDateToISO(dateStr: string): string {

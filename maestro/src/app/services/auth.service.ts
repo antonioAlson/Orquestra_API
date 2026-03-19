@@ -7,6 +7,7 @@ interface User {
   id: number;
   name: string;
   email: string;
+  createdAt?: string;
 }
 
 interface AuthResponse {
@@ -15,6 +16,22 @@ interface AuthResponse {
   data: {
     user: User;
     token: string;
+  };
+}
+
+interface UsersListResponse {
+  success: boolean;
+  message?: string;
+  data: {
+    users: User[];
+  };
+}
+
+interface CreateUserResponse {
+  success: boolean;
+  message: string;
+  data: {
+    user: User;
   };
 }
 
@@ -68,6 +85,24 @@ export class AuthService {
         }
       })
     );
+  }
+
+  /**
+   * Listar usuários cadastrados
+   */
+  listUsers(): Observable<UsersListResponse> {
+    return this.http.get<UsersListResponse>(`${this.apiUrl}/users`);
+  }
+
+  /**
+   * Criar novo usuário sem alterar sessão atual
+   */
+  createManagedUser(name: string, email: string, password: string): Observable<CreateUserResponse> {
+    return this.http.post<CreateUserResponse>(`${this.apiUrl}/users`, {
+      name,
+      email,
+      password
+    });
   }
 
   /**

@@ -56,7 +56,7 @@
       </button>
 
       <!-- Reprogramar Datas CONTEC -->
-      <button type="button" class="routine-card" (click)="openRoutine('reprogramar-contec')">
+      <button type="button" class="routine-card" (click)="openRoutine('reprogramar-contec')" [disabled]="true" title="Em desenvolvimento">
         <div class="card-icon" style="background: #fff4e5;">
           <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef6c00" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
@@ -597,7 +597,7 @@
       <button type="button" class="btn-secondary" (click)="closeAlterarDatasModal()" [disabled]="isProcessing">
         Cancelar
       </button>
-      <button type="button" class="btn-primary" (click)="salvarDatasIndividuais()" [disabled]="isProcessing || issuesSemData.length === 0">
+      <button type="button" class="btn-primary" (click)="salvarDatasIndividuais()" [disabled]="isProcessing || !hasPendingDateUpdates()">
         <span *ngIf="!isProcessing">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"></path>
