@@ -6,6 +6,27 @@ import { FilterIssuesPipe } from './filter-issues.pipe';
 import { finalize, take, timeout } from 'rxjs/operators';
 import JSZip from 'jszip';
 
+type MultiFilterColumn = 'status' | 'situacao' | 'previsao' | 'novaData';
+type FilterColumn = MultiFilterColumn;
+type SortDirection = '' | 'asc' | 'desc';
+
+interface SortConfig {
+  column: '' | MultiFilterColumn;
+  direction: SortDirection;
+}
+
+interface FilterOption {
+  value: string;
+  label: string;
+}
+
+interface ColumnFiltersState {
+  status: string[];
+  situacao: string[];
+  previsao: string[];
+  novaData: string[];
+}
+
 @Component({
   selector: 'app-ordens-producao',
   standalone: true,
@@ -15,6 +36,29 @@ import JSZip from 'jszip';
 })
 export class OrdensProducaoComponent implements OnInit {
     searchTerm: string = '';
+  activeFilterMenu: '' | 'status' | 'situacao' | 'previsao' | 'novaData' = '';
+  filterMenuPosition = { top: 0, left: 0 };
+  filterOptionSearch = '';
+  sortConfig: SortConfig = {
+    column: '',
+    direction: ''
+  };
+  columnFilters: ColumnFiltersState = {
+    status: [],
+    situacao: [],
+    previsao: [],
+    novaData: []
+  };
+  statusOptions: string[] = [];
+  situacaoOptions: string[] = [];
+  readonly previsaoOptions = [
+    { value: 'com-data', label: 'Com data' },
+    { value: 'sem-data', label: 'Sem data' }
+  ];
+  readonly novaDataOptions = [
+    { value: 'com-data', label: 'Preenchida' },
+    { value: 'sem-data', label: 'Vazia' }
+  ];
   showReprogramModal = false;
   showPrintModal = false;
   showAlterarDatasModal = false;
@@ -96,6 +140,231 @@ export class OrdensProducaoComponent implements OnInit {
     }
   }
 
+  @HostListener('document:click', ['$event'])
+  handleDocumentClick(event: MouseEvent): void {
+    const target = event.target as HTMLElement | null;
+    const clickedInsideFilterArea = !!target?.closest('.filterable-header, .filter-popup');
+
+    if (!clickedInsideFilterArea && this.activeFilterMenu) {
+      setTimeout(() => {
+        this.activeFilterMenu = '';
+        this.filterOptionSearch = '';
+        this.refreshView();
+      }, 0);
+    }
+  }
+
+  toggleFilterMenu(column: FilterColumn, event: Event): void {
+    event.stopPropagation();
+
+    if (this.activeFilterMenu === column) {
+      this.activeFilterMenu = '';
+      this.filterOptionSearch = '';
+      this.refreshView();
+      return;
+    }
+
+    const trigger = event.currentTarget as HTMLElement | null;
+    if (trigger) {
+      const rect = trigger.getBoundingClientRect();
+      const popupWidth = 270;
+      const popupHeight = 220;
+      const margin = 10;
+
+      let top = rect.bottom + 8;
+      let left = rect.right - popupWidth;
+
+      if (left < margin) {
+        left = margin;
+      }
+
+      if (left + popupWidth > window.innerWidth - margin) {
+        left = window.innerWidth - popupWidth - margin;
+      }
+
+      if (top + popupHeight > window.innerHeight - margin) {
+        top = Math.max(margin, rect.top - popupHeight - 8);
+      }
+
+      this.filterMenuPosition = { top, left };
+    }
+
+    this.activeFilterMenu = column;
+    this.filterOptionSearch = '';
+    this.refreshView();
+  }
+
+  clearColumnFilter(column: FilterColumn): void {
+    this.columnFilters[column] = [];
+    this.refreshView();
+  }
+
+  hasActiveFilter(column: FilterColumn): boolean {
+    return this.columnFilters[column].length > 0;
+  }
+
+  closeActiveFilterMenu(): void {
+    if (!this.activeFilterMenu) {
+      return;
+    }
+
+    this.activeFilterMenu = '';
+    this.filterOptionSearch = '';
+    this.refreshView();
+  }
+
+  clearAllFilters(): void {
+    this.searchTerm = '';
+    this.filterOptionSearch = '';
+    this.sortConfig = { column: '', direction: '' };
+    this.activeFilterMenu = '';
+    this.resetColumnFilters();
+    this.refreshView();
+  }
+
+  getActiveFilterTitle(): string {
+    switch (this.activeFilterMenu) {
+      case 'status':
+        return 'Status';
+      case 'situacao':
+        return 'Situação';
+      case 'previsao':
+        return 'Prev. Atual';
+      case 'novaData':
+        return 'Nova Data';
+      default:
+        return 'Filtro';
+    }
+  }
+
+  getSortBadgeText(): string {
+    if (!this.activeFilterMenu || this.sortConfig.column !== this.activeFilterMenu || this.sortConfig.direction === '') {
+      return 'Sem ordem';
+    }
+
+    return this.sortConfig.direction === 'asc' ? 'Crescente' : 'Decrescente';
+  }
+
+  getVisibleFilterOptions(): FilterOption[] {
+    if (!this.activeFilterMenu) {
+      return [];
+    }
+
+    const search = this.filterOptionSearch.trim().toLowerCase();
+    const options = this.getOptionsByColumn(this.activeFilterMenu);
+
+    if (!search) {
+      return options;
+    }
+
+    return options.filter(option => option.label.toLowerCase().includes(search));
+  }
+
+  getSelectedCountForActiveFilter(): number {
+    if (!this.activeFilterMenu) {
+      return 0;
+    }
+
+    return this.columnFilters[this.activeFilterMenu].length;
+  }
+
+  toggleSelectVisibleOptions(): void {
+    if (!this.activeFilterMenu) {
+      return;
+    }
+
+    const visibleOptions = this.getVisibleFilterOptions();
+    const visibleValues = visibleOptions.map(option => option.value);
+    const selectedValues = this.columnFilters[this.activeFilterMenu];
+    const allVisibleSelected = visibleValues.length > 0 && visibleValues.every(value => selectedValues.includes(value));
+
+    if (allVisibleSelected) {
+      this.columnFilters[this.activeFilterMenu] = selectedValues.filter(value => !visibleValues.includes(value));
+    } else {
+      const merged = [...selectedValues];
+      visibleValues.forEach(value => {
+        if (!merged.includes(value)) {
+          merged.push(value);
+        }
+      });
+      this.columnFilters[this.activeFilterMenu] = merged;
+    }
+
+    this.refreshView();
+  }
+
+  getToggleVisibleButtonLabel(): string {
+    if (!this.activeFilterMenu) {
+      return 'Selecionar visíveis';
+    }
+
+    const visibleOptions = this.getVisibleFilterOptions();
+    const selectedValues = this.columnFilters[this.activeFilterMenu];
+    const allVisibleSelected = visibleOptions.length > 0 && visibleOptions.every(option => selectedValues.includes(option.value));
+
+    return allVisibleSelected ? 'Limpar' : 'Selecionar visíveis';
+  }
+
+  toggleSortForActiveFilter(): void {
+    const targetColumn = this.activeFilterMenu;
+    if (!targetColumn) {
+      return;
+    }
+
+    if (this.sortConfig.column !== targetColumn || this.sortConfig.direction === '') {
+      this.sortConfig = { column: targetColumn, direction: 'asc' };
+    } else if (this.sortConfig.direction === 'asc') {
+      this.sortConfig = { column: targetColumn, direction: 'desc' };
+    } else {
+      this.sortConfig = { column: '', direction: '' };
+    }
+
+    this.refreshView();
+  }
+
+  getSortButtonLabel(): string {
+    if (!this.activeFilterMenu || this.sortConfig.column !== this.activeFilterMenu || this.sortConfig.direction === '') {
+      return 'Ordenar';
+    }
+
+    return this.sortConfig.direction === 'asc' ? 'Ordem: Crescente' : 'Ordem: Decrescente';
+  }
+
+  isFilterOptionSelected(column: MultiFilterColumn, value: string): boolean {
+    return this.columnFilters[column].includes(value);
+  }
+
+  onFilterOptionChange(column: MultiFilterColumn, value: string, event: Event): void {
+    const target = event.target as HTMLInputElement;
+    const checked = target.checked;
+    const currentValues = this.columnFilters[column];
+
+    if (checked && !currentValues.includes(value)) {
+      this.columnFilters[column] = [...currentValues, value];
+    }
+
+    if (!checked) {
+      this.columnFilters[column] = currentValues.filter(item => item !== value);
+    }
+
+    this.refreshView();
+  }
+
+  private getOptionsByColumn(column: MultiFilterColumn): FilterOption[] {
+    switch (column) {
+      case 'status':
+        return this.statusOptions.map(item => ({ value: item, label: item }));
+      case 'situacao':
+        return this.situacaoOptions.map(item => ({ value: item, label: item }));
+      case 'previsao':
+        return this.previsaoOptions.map(item => ({ value: item.value, label: item.label }));
+      case 'novaData':
+        return this.novaDataOptions.map(item => ({ value: item.value, label: item.label }));
+      default:
+        return [];
+    }
+  }
+
   openRoutine(routineName: string): void {
     console.log('Abrindo rotina:', routineName);
     
@@ -147,6 +416,11 @@ export class OrdensProducaoComponent implements OnInit {
 
   openAlterarDatasModal(): void {
     this.showAlterarDatasModal = true;
+    this.searchTerm = '';
+    this.sortConfig = { column: '', direction: '' };
+    this.resetColumnFilters();
+    this.statusOptions = [];
+    this.situacaoOptions = [];
     this.issuesSemData = [];
     this.resultMessage = 'Carregando...';
     this.resultType = '';
@@ -161,6 +435,11 @@ export class OrdensProducaoComponent implements OnInit {
 
   closeAlterarDatasModal(): void {
     this.showAlterarDatasModal = false;
+    this.searchTerm = '';
+    this.filterOptionSearch = '';
+    this.sortConfig = { column: '', direction: '' };
+    this.resetColumnFilters();
+    this.activeFilterMenu = '';
     this.isProcessing = false;
     this.clearProcessingGuard();
   }
@@ -191,10 +470,13 @@ export class OrdensProducaoComponent implements OnInit {
               previsao: issue.previsao || '',
               novaData: ''
             }));
+            this.refreshColumnFilterOptions();
             this.resultMessage = `${this.issuesSemData.length} cartões encontrados`;
             this.resultType = 'success';
           } else {
             this.issuesSemData = [];
+            this.statusOptions = [];
+            this.situacaoOptions = [];
             this.resultMessage = 'Nenhum cartão encontrado';
             this.resultType = 'error';
           }
@@ -202,6 +484,8 @@ export class OrdensProducaoComponent implements OnInit {
         },
         error: (error) => {
           this.issuesSemData = [];
+          this.statusOptions = [];
+          this.situacaoOptions = [];
           this.resultType = 'error';
           if (error?.name === 'TimeoutError') {
             this.resultMessage = `Tempo limite excedido (${this.requestTimeoutMs / 1000}s). Tente novamente.`;
@@ -309,12 +593,70 @@ export class OrdensProducaoComponent implements OnInit {
     input.value = formatted;
   }
 
+  getSituacaoTagClass(situacao: string): string {
+    const value = (situacao || '').toLowerCase();
+
+    if (value.includes('atras') || value.includes('bloque')) {
+      return 'tag-danger';
+    }
+
+    if (value.includes('risc') || value.includes('aten') || value.includes('pend')) {
+      return 'tag-warning';
+    }
+
+    if (value.includes('concl') || value.includes('finaliz') || value.includes('ok')) {
+      return 'tag-success';
+    }
+
+    if (value.includes('andamento') || value.includes('progres') || value.includes('desenv')) {
+      return 'tag-info';
+    }
+
+    return 'tag-neutral';
+  }
+
+  getSituacaoDisplay(situacao: string): string {
+    const normalized = (situacao || '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (normalized.includes('recebido encaminhado')) {
+      return '⚪️RECEBIDO ENCAMINH';
+    }
+
+    return situacao;
+  }
+
   private refreshView(): void {
     try {
       this.cdr.detectChanges();
     } catch {
       // Ignora se o detector não estiver disponível durante transição de view.
     }
+  }
+
+  private resetColumnFilters(): void {
+    this.columnFilters = {
+      status: [],
+      situacao: [],
+      previsao: [],
+      novaData: []
+    };
+  }
+
+  private refreshColumnFilterOptions(): void {
+    this.statusOptions = this.buildDistinctOptions('status');
+    this.situacaoOptions = this.buildDistinctOptions('situacao');
+  }
+
+  private buildDistinctOptions(field: 'status' | 'situacao'): string[] {
+    const values = this.issuesSemData
+      .map(issue => (issue[field] || '').toString().trim())
+      .filter(value => value.length > 0);
+
+    return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }
 
   onPrintIdsInput(): void {
