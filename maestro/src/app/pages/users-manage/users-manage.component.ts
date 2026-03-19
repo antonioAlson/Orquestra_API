@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { finalize, take } from 'rxjs/operators';
@@ -31,8 +31,12 @@ export class UsersManageComponent implements OnInit {
   formName = '';
   formEmail = '';
   formPassword = '';
+  formConfirmPassword = '';
 
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private cdr: ChangeDetectorRef
+  ) {}
 
   ngOnInit(): void {
     this.loadUsers();
@@ -42,24 +46,28 @@ export class UsersManageComponent implements OnInit {
     this.isLoading = true;
     this.feedbackMessage = '';
     this.feedbackType = '';
+    this.refreshView();
 
     this.authService.listUsers()
       .pipe(
         take(1),
         finalize(() => {
           this.isLoading = false;
+          this.refreshView();
         })
       )
       .subscribe({
         next: (response) => {
           this.users = response.data?.users || [];
           this.applySearch();
+          this.refreshView();
         },
         error: (error) => {
           this.users = [];
           this.filteredUsers = [];
           this.feedbackType = 'error';
           this.feedbackMessage = error?.error?.message || 'Erro ao carregar usuários';
+          this.refreshView();
         }
       });
   }
@@ -75,8 +83,7 @@ export class UsersManageComponent implements OnInit {
     this.filteredUsers = this.users.filter(user => {
       const name = (user.name || '').toLowerCase();
       const email = (user.email || '').toLowerCase();
-      const id = String(user.id || '');
-      return name.includes(term) || email.includes(term) || id.includes(term);
+      return name.includes(term) || email.includes(term);
     });
   }
 
@@ -85,8 +92,10 @@ export class UsersManageComponent implements OnInit {
     this.formName = '';
     this.formEmail = '';
     this.formPassword = '';
+    this.formConfirmPassword = '';
     this.feedbackMessage = '';
     this.feedbackType = '';
+    this.refreshView();
   }
 
   closeCreateModal(): void {
@@ -95,29 +104,39 @@ export class UsersManageComponent implements OnInit {
     }
 
     this.showCreateModal = false;
+    this.refreshView();
   }
 
   canSubmitCreateUser(): boolean {
     return this.formName.trim().length > 0
       && this.formEmail.trim().length > 0
       && this.formPassword.length >= 6
+      && this.formConfirmPassword.length >= 6
+      && this.formPassword === this.formConfirmPassword
       && !this.isSaving;
   }
 
   createUser(): void {
     if (!this.canSubmitCreateUser()) {
+      if (this.formPassword !== this.formConfirmPassword) {
+        this.feedbackType = 'error';
+        this.feedbackMessage = 'As senhas não coincidem';
+        this.refreshView();
+      }
       return;
     }
 
     this.isSaving = true;
     this.feedbackMessage = '';
     this.feedbackType = '';
+    this.refreshView();
 
     this.authService.createManagedUser(this.formName.trim(), this.formEmail.trim(), this.formPassword)
       .pipe(
         take(1),
         finalize(() => {
           this.isSaving = false;
+          this.refreshView();
         })
       )
       .subscribe({
@@ -130,16 +149,27 @@ export class UsersManageComponent implements OnInit {
 
           this.feedbackType = 'success';
           this.feedbackMessage = response.message || 'Usuário criado com sucesso';
+          this.refreshView();
 
           setTimeout(() => {
             this.showCreateModal = false;
+            this.refreshView();
           }, 700);
         },
         error: (error) => {
           this.feedbackType = 'error';
           this.feedbackMessage = error?.error?.message || 'Erro ao criar usuário';
+          this.refreshView();
         }
       });
+  }
+
+  private refreshView(): void {
+    try {
+      this.cdr.detectChanges();
+    } catch {
+      // Ignora tentativas fora do ciclo de renderização.
+    }
   }
 
   formatDate(date?: string): string {

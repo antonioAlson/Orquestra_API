@@ -17,7 +17,7 @@
           type="text"
           [(ngModel)]="searchTerm"
           (input)="applySearch()"
-          placeholder="Pesquisar por nome, email ou ID"
+          placeholder="Pesquisar por nome ou email"
           class="search-input"
         />
       </div>
@@ -34,7 +34,6 @@
     <section class="table-card">
       <div class="table-header">
         <h2>Usuarios cadastrados</h2>
-        <button type="button" class="btn-ghost" (click)="loadUsers()" [disabled]="isLoading">Atualizar</button>
       </div>
 
       <div *ngIf="feedbackMessage && !showCreateModal" class="feedback" [class.success]="feedbackType === 'success'" [class.error]="feedbackType === 'error'">
@@ -47,7 +46,6 @@
         <table class="users-table" *ngIf="filteredUsers.length > 0; else emptyState">
           <thead>
             <tr>
-              <th>ID</th>
               <th>Nome</th>
               <th>Email</th>
               <th>Cadastrado em</th>
@@ -55,7 +53,6 @@
           </thead>
           <tbody>
             <tr *ngFor="let user of filteredUsers">
-              <td>{{ user.id }}</td>
               <td>{{ user.name }}</td>
               <td>{{ user.email }}</td>
               <td>{{ formatDate(user.createdAt) }}</td>
@@ -98,6 +95,15 @@
         Senha
         <input type="password" [(ngModel)]="formPassword" [disabled]="isSaving" placeholder="Minimo 6 caracteres" />
       </label>
+
+      <label>
+        Confirmar senha
+        <input type="password" [(ngModel)]="formConfirmPassword" [disabled]="isSaving" placeholder="Repita a senha" />
+      </label>
+    </div>
+
+    <div class="feedback error" *ngIf="formConfirmPassword && formPassword !== formConfirmPassword">
+      As senhas não coincidem.
     </div>
 
     <div *ngIf="feedbackMessage" class="feedback" [class.success]="feedbackType === 'success'" [class.error]="feedbackType === 'error'">
