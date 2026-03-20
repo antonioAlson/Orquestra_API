@@ -1,6 +1,10 @@
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
+import PizZip from 'pizzip';
+import Docxtemplater from 'docxtemplater';
+import ImageModule from 'docxtemplater-image-module-free';
+import QRCode from 'qrcode';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -39,6 +43,13 @@ function normalizeCardId(value) {
 
 function toPosixPath(value) {
   return String(value || '').replace(/\\/g, '/');
+}
+
+function sanitizeFileName(value) {
+  return String(value || '')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function sanitizeRelativePath(value) {
@@ -1088,6 +1099,250 @@ export const downloadArquivoJira = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Erro ao baixar anexo do Jira: ' + error.message
+    });
+  }
+};
+
+/**
+ * Busca campos específicos de um card Jira para geração de espelho.
+ */
+async function buscarDadosCardEspelho(cardId) {
+  const fieldToString = (value) => {
+    if (value === null || value === undefined) {
+      return '';
+    }
+
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => fieldToString(item))
+        .filter((item) => item.length > 0)
+        .join(', ');
+    }
+
+    if (typeof value === 'object') {
+      const preferredKeys = ['value', 'name', 'displayName', 'key', 'id'];
+      for (const key of preferredKeys) {
+        const nested = fieldToString(value[key]);
+        if (nested) {
+          return nested;
+        }
+      }
+
+      return '';
+    }
+
+    return String(value).trim();
+  };
+
+  const pickField = (fields, keys, fallback = '') => {
+    for (const key of keys) {
+      const parsed = fieldToString(fields[key]);
+      if (parsed) {
+        return parsed;
+      }
+    }
+    return fallback;
+  };
+
+  const extractOrderNumber = (fields, cardId) => {
+    const direct = fieldToString(fields.customfield_10040);
+    if (direct) {
+      const match = direct.match(/(\d{3,10})/);
+      return (match?.[1] || direct).trim();
+    }
+
+    const fallbackSources = [
+      fieldToString(fields.summary),
+      fieldToString(fields.customfield_11353)
+    ].filter((value) => value.length > 0);
+
+    for (const source of fallbackSources) {
+      const explicitOs = source.match(/(?:\bOS\b|ORDEM(?:\s+DE\s+SERVICO)?)[^\d]{0,8}(\d{3,10})/i);
+      if (explicitOs?.[1]) {
+        return explicitOs[1].trim();
+      }
+
+      const anyNumber = source.match(/\b(\d{3,10})\b/);
+      if (anyNumber?.[1]) {
+        return anyNumber[1].trim();
+      }
+    }
+
+    return String(cardId || '').trim().toUpperCase();
+  };
+
+  const jiraUrl = process.env.JIRA_URL;
+  const email = process.env.JIRA_EMAIL;
+  const apiToken = process.env.JIRA_API_TOKEN;
+
+  if (!jiraUrl || !email || !apiToken) {
+    throw new Error('Credenciais do Jira não configuradas no servidor');
+  }
+
+  const auth = Buffer.from(`${email}:${apiToken}`).toString('base64');
+  const issueUrl = `${jiraUrl}/rest/api/3/issue/${encodeURIComponent(cardId)}`;
+  const response = await axios.get(issueUrl, {
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Basic ${auth}`
+    },
+    params: {
+      fields: 'summary,customfield_11298,customfield_11331,customfield_11071,customfield_11353,customfield_10040'
+    },
+    timeout: 30000
+  });
+
+  const fields = response.data?.fields || {};
+  return {
+    id: cardId,
+    modeloVeiculo: pickField(fields, ['customfield_11298']),
+    tipoTeto: pickField(fields, ['customfield_11331']),
+    anoVeiculo: pickField(fields, ['customfield_11071']),
+    numeroProjeto: pickField(fields, ['customfield_11353', 'summary']),
+    numeroOrdem: extractOrderNumber(fields, cardId)
+  };
+}
+
+/**
+ * Gera documento docx de espelho com base no template.
+ */
+async function gerarEspelhoDocx(templatePath, cardData) {
+  const templateBuffer = await fs.promises.readFile(templatePath);
+  const zip = new PizZip(templateBuffer);
+
+  // Converte o placeholder de QR para tag de imagem, sem exigir edição manual do template.
+  const mainDocument = zip.file('word/document.xml');
+  if (mainDocument) {
+    const xml = mainDocument.asText();
+    const patchedXml = xml.replace(/\{\{\s*QR_CODE\s*\}\}/g, '{{%QR_CODE}}');
+    if (patchedXml !== xml) {
+      zip.file('word/document.xml', patchedXml);
+    }
+  }
+
+  const imageModule = new ImageModule({
+    centered: false,
+    getImage(tagValue) {
+      const value = String(tagValue || '');
+      const base64 = value.includes(',') ? value.split(',')[1] : value;
+      return Buffer.from(base64, 'base64');
+    },
+    getSize() {
+      return [180, 180];
+    }
+  });
+
+  const doc = new Docxtemplater(zip, {
+    modules: [imageModule],
+    paragraphLoop: true,
+    linebreaks: true,
+    // O template default.docx usa placeholders no formato {{ CAMPO }}.
+    delimiters: {
+      start: '{{',
+      end: '}}'
+    },
+    // Garante que tags com espaços sejam resolvidas corretamente.
+    parser(tag) {
+      const cleanTag = String(tag || '').trim();
+      const key = cleanTag.startsWith('%') ? cleanTag.slice(1).trim() : cleanTag;
+      return {
+        get(scope) {
+          const value = scope?.[key];
+          return value === undefined || value === null ? '' : value;
+        }
+      };
+    },
+    nullGetter() {
+      return '';
+    }
+  });
+
+  const dataAtual = new Date().toLocaleDateString('pt-BR');
+  const qrPayload = [
+    cardData.modeloVeiculo,
+    cardData.tipoTeto,
+    cardData.anoVeiculo,
+    cardData.numeroProjeto,
+    cardData.numeroOrdem
+  ].filter((value) => String(value || '').trim().length > 0).join('\n');
+
+  const qrCodeDataUrl = await QRCode.toDataURL(qrPayload || cardData.id || '', {
+    margin: 1,
+    width: 420
+  });
+
+  doc.render({
+    MODELO_VEICULO: cardData.modeloVeiculo,
+    TIPO_TETO: cardData.tipoTeto,
+    ANO_VEICULO: cardData.anoVeiculo,
+    NUMERO_PROJETO: cardData.numeroProjeto,
+    DATA_PROJETO: dataAtual,
+    QUANTIDADE_PECAS: '',
+    NUMERO_ORDEM: cardData.numeroOrdem,
+    QR_CODE: qrCodeDataUrl
+  });
+
+  return doc.getZip().generate({ type: 'nodebuffer' });
+}
+
+/**
+ * Gera espelhos nativamente no backend Node.js para múltiplos cards.
+ */
+export const gerarEspelhos = async (req, res) => {
+  try {
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Informe ao menos um ID para gerar espelhos.'
+      });
+    }
+
+    const normalizedIds = ids
+      .map((id) => String(id || '').trim().toUpperCase())
+      .filter((id) => id.length > 0);
+
+    if (normalizedIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'IDs inválidos para gerar espelhos.'
+      });
+    }
+
+    if (normalizedIds.length !== 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Envie apenas 1 ID por requisição para download direto.'
+      });
+    }
+
+    const backendRoot = path.join(__dirname, '..');
+    const templatePath = path.join(backendRoot, 'scripts', 'projetos', 'default.docx');
+
+    if (!fs.existsSync(templatePath)) {
+      return res.status(500).json({
+        success: false,
+        message: `Template não encontrado em ${templatePath}`
+      });
+    }
+
+    const cardId = normalizedIds[0];
+    const cardData = await buscarDadosCardEspelho(cardId);
+    const numeroOrdem = sanitizeFileName(String(cardData.numeroOrdem || cardId));
+    const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '.');
+    const hora = new Date().toTimeString().slice(0, 5).replace(':', '-');
+    const downloadName = `${numeroOrdem} ${data} ${hora}.docx`;
+    const generatedBuffer = await gerarEspelhoDocx(templatePath, cardData);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+    return res.status(200).send(generatedBuffer);
+  } catch (error) {
+    console.error('❌ Erro em gerarEspelhos:', error);
+    return res.status(500).json({
+      success: false,
+      message: `Erro ao gerar espelhos: ${error.message}`
     });
   }
 };

@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Observable, switchMap, from, tap } from 'rxjs';
+import { HttpClient, HttpHeaders, HttpResponse } from '@angular/common/http';
+import { Observable, switchMap, from, tap, of } from 'rxjs';
+import { catchError, concatMap, map, toArray } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 import * as ExcelJS from 'exceljs';
 
@@ -366,6 +367,99 @@ export class JiraService {
         }
       })
     );
+  }
+
+  /**
+   * Gera espelhos para os cards informados.
+   */
+  gerarEspelhos(ids: string[]): Observable<any> {
+    console.log('🧩 [JiraService] gerarEspelhos iniciado');
+    console.log('📋 IDs:', ids);
+    console.log('🌐 URL:', `${this.apiUrl}/jira/gerar-espelhos`);
+
+    const normalizedIds = (ids || [])
+      .map((id) => String(id || '').trim().toUpperCase())
+      .filter((id) => id.length > 0);
+
+    if (normalizedIds.length === 0) {
+      return of({
+        success: false,
+        message: 'Nenhum ID valido para gerar espelhos.',
+        data: { processed: 0, generated: 0, errors: [] }
+      });
+    }
+
+    return from(normalizedIds).pipe(
+      concatMap((id) => this.http.post(`${this.apiUrl}/jira/gerar-espelhos`, { ids: [id] }, {
+        observe: 'response',
+        responseType: 'blob'
+      }).pipe(
+        map((response: HttpResponse<Blob>) => {
+          this.saveBlobResponse(response, `espelho-${id}.docx`);
+          return { id, success: true as const };
+        }),
+        catchError((error) => {
+          console.error(`❌ [JiraService] Erro ao gerar espelho ${id}:`, error);
+          return of({
+            id,
+            success: false as const,
+            message: error?.error?.message || error?.message || 'Erro ao gerar espelho.'
+          });
+        })
+      )),
+      toArray(),
+      map((results) => {
+        const successItems = results.filter((item) => item.success);
+        const failedItems = results.filter((item) => !item.success);
+
+        return {
+          success: failedItems.length === 0,
+          message: failedItems.length === 0
+            ? `Espelhos baixados: ${successItems.length}`
+            : `Espelhos baixados: ${successItems.length}. Falhas: ${failedItems.length}`,
+          data: {
+            processed: results.length,
+            generated: successItems.length,
+            errorCount: failedItems.length,
+            errors: failedItems
+          }
+        };
+      }),
+      tap({
+        next: (response) => {
+          console.log('✅ [JiraService] gerarEspelhos sucesso:', response);
+        },
+        error: (error) => {
+          console.error('❌ [JiraService] gerarEspelhos erro:', error);
+        }
+      })
+    );
+  }
+
+  private saveBlobResponse(response: HttpResponse<Blob>, fallbackName: string): void {
+    const blob = response.body;
+    if (!blob) {
+      return;
+    }
+
+    const contentDisposition = response.headers.get('content-disposition') || '';
+    const filename = this.extractFilename(contentDisposition, fallbackName);
+
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  }
+
+  private extractFilename(contentDisposition: string, fallbackName: string): string {
+    const match = contentDisposition.match(/filename="?([^";]+)"?/i);
+    if (!match?.[1]) {
+      return fallbackName;
+    }
+
+    return match[1].trim();
   }
 
 

@@ -1,4 +1,12 @@
 <div class="espelhos-container">
+  <input
+    #cardFilePicker
+    type="file"
+    multiple
+    class="hidden-file-input"
+    (change)="onCardFilesSelected($event)"
+  />
+
   <header class="espelhos-header">
     <div class="header-content">
       <h1>Espelhos</h1>
@@ -12,17 +20,30 @@
         <h2>Aguardando Projeto</h2>
       </div>
       <div class="board-list-wrapper">
-        <ul class="board-list" aria-label="Lista horizontal quadro 1">
-          <li class="list-item">OS 1001 - CAMINHAO 01 - 25/03/2026</li>
-          <li class="list-item">OS 1002 - CARRETA 08 - 27/03/2026</li>
-          <li class="list-item">OS 1003 - VAN 05 - 29/03/2026</li>
-          <li class="list-item">OS 1004 - TRUCK 12 - 01/04/2026</li>
+        <div *ngIf="isLoadingAguardandoProjeto" class="board-state">Carregando cartões...</div>
+        <div *ngIf="!isLoadingAguardandoProjeto && loadErrorAguardandoProjeto" class="board-state error">{{ loadErrorAguardandoProjeto }}</div>
+        <ul class="board-list" aria-label="Lista horizontal quadro 1" *ngIf="!isLoadingAguardandoProjeto && !loadErrorAguardandoProjeto && aguardandoProjetoItems.length > 0">
+          <li
+            class="list-item"
+            *ngFor="let item of aguardandoProjetoItems"
+            [attr.data-id]="item.id"
+            [title]="getAguardandoProjetoDisplay(item).fullText"
+            [class.marked]="isAguardandoCardMarked(item.id)"
+            (click)="onAguardandoCardClick(item)"
+          >
+            {{ getAguardandoProjetoDisplay(item).text }}
+          </li>
         </ul>
+        <div *ngIf="!isLoadingAguardandoProjeto && !loadErrorAguardandoProjeto && aguardandoProjetoItems.length === 0" class="board-state">Nenhum card com status A Produzir.</div>
       </div>
     </section>
 
     <div class="between-boards-actions">
-      <button type="button" class="generate-btn">Gerar Espelhos</button>
+      <button type="button" class="generate-btn" (click)="gerarEspelhos()" [disabled]="!canGenerateEspelhos()">{{ isGeneratingEspelhos ? 'Gerando...' : 'Gerar Espelhos' }}</button>
+    </div>
+
+    <div *ngIf="generateMessage" class="generate-feedback" [class.success]="generateMessageType === 'success'" [class.error]="generateMessageType === 'error'">
+      {{ generateMessage }}
     </div>
 
     <section class="board board-bottom">
@@ -30,12 +51,19 @@
         <h2>Liberados</h2>
       </div>
       <div class="board-list-wrapper">
-        <ul class="board-list" aria-label="Lista horizontal quadro 2">
-          <li class="list-item">OS 2001 - UTILITARIO 03 - 26/03/2026</li>
-          <li class="list-item">OS 2002 - CAMINHAO 06 - 28/03/2026</li>
-          <li class="list-item">OS 2003 - CARRETA 11 - 30/03/2026</li>
-          <li class="list-item">OS 2004 - VAN 02 - 02/04/2026</li>
+        <div *ngIf="isLoadingAguardandoProjeto" class="board-state">Carregando cartões...</div>
+        <div *ngIf="!isLoadingAguardandoProjeto && loadErrorAguardandoProjeto" class="board-state error">{{ loadErrorAguardandoProjeto }}</div>
+        <ul class="board-list" aria-label="Lista horizontal quadro 2" *ngIf="!isLoadingAguardandoProjeto && !loadErrorAguardandoProjeto && liberadosItems.length > 0">
+          <li
+            class="list-item"
+            *ngFor="let item of liberadosItems"
+            [attr.data-id]="item.id"
+            [title]="getAguardandoProjetoDisplay(item).fullText"
+          >
+            {{ getAguardandoProjetoDisplay(item).text }}
+          </li>
         </ul>
+        <div *ngIf="!isLoadingAguardandoProjeto && !loadErrorAguardandoProjeto && liberadosItems.length === 0" class="board-state">Nenhum card com status Liberado Engenharia.</div>
       </div>
     </section>
   </main>

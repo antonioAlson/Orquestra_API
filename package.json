@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Workspace do projeto Maestro - Frontend Angular + Backend API",
   "scripts": {
-    "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "start": "powershell -ExecutionPolicy Bypass -File .\\start.ps1",
+    "start:concurrently": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
     "start:backend": "cd backend && npm run dev",
     "start:frontend": "cd maestro && npm start",
     "dev": "npm start",

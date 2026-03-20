@@ -6,7 +6,8 @@ import {
   atualizarDatasIndividuais,
   buscarArquivosPorIds,
   downloadArquivo,
-  downloadArquivoJira
+  downloadArquivoJira,
+  gerarEspelhos
 } from '../controllers/jiraController.js';
 import { authenticate } from '../middleware/auth.js';
 
@@ -32,5 +33,8 @@ router.get('/download-arquivo/:cardId/:directory/*', authenticate, downloadArqui
 
 // Download de anexo do Jira
 router.get('/download-arquivo-jira/:cardId/:attachmentId/:filename', authenticate, downloadArquivoJira);
+
+// Gerar espelhos (script Python)
+router.post('/gerar-espelhos', authenticate, gerarEspelhos);
 
 export default router;
