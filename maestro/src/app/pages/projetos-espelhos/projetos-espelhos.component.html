@@ -32,8 +32,12 @@
         [attr.aria-selected]="activeAguardandoTab === 'tenssylon'"
         (click)="setAguardandoTab('tenssylon')"
       >
-        Tenssylon
+        Tensylon
       </button>
+    </div>
+
+    <div *ngIf="generateMessage && isSelectionFeedback()" class="generate-feedback" [class.success]="generateMessageType === 'success'" [class.error]="generateMessageType === 'error'">
+      {{ generateMessage }}
     </div>
 
     <section class="board board-top">
@@ -67,7 +71,7 @@
       <button type="button" class="generate-btn" (click)="gerarEspelhos()" [disabled]="!canGenerateEspelhos()">{{ isGeneratingEspelhos ? 'Gerando...' : 'Gerar Espelhos' }}</button>
     </div>
 
-    <div *ngIf="generateMessage" class="generate-feedback" [class.success]="generateMessageType === 'success'" [class.error]="generateMessageType === 'error'">
+    <div *ngIf="generateMessage && !isSelectionFeedback()" class="generate-feedback" [class.success]="generateMessageType === 'success'" [class.error]="generateMessageType === 'error'">
       {{ generateMessage }}
     </div>
 

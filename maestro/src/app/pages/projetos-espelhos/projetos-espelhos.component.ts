@@ -105,12 +105,43 @@ export class ProjetosEspelhosComponent implements OnInit {
   }
 
   getAguardandoProjetoDisplay(item: EspelhoItem): EspelhoItemDisplay {
-    const resumo = this.abreviarResumo(item.resumo);
+    const osNumber = this.getOsNumberForCard(item.id);
+    const resumoSemOs = this.removerOsDoResumo(item.resumo, osNumber);
+    const resumo = this.abreviarResumo(resumoSemOs);
     const veiculo = this.abreviarVeiculo(item.veiculo);
-    const text = `${resumo} - ${veiculo} - ${item.previsao}`;
-    const fullText = `${item.resumo} - ${item.veiculo} - ${item.previsao}`;
+
+    const text = [osNumber, veiculo, resumo, item.previsao]
+      .map((value) => String(value || '').trim())
+      .filter((value) => value.length > 0 && value !== '-')
+      .join(' - ');
+
+    const fullText = [osNumber, resumoSemOs, item.veiculo, item.previsao]
+      .map((value) => String(value || '').trim())
+      .filter((value) => value.length > 0 && value !== '-')
+      .join(' - ');
 
     return { text, fullText };
+  }
+
+  private removerOsDoResumo(resumo: string, osNumber: string): string {
+    const value = String(resumo || '').trim();
+    const osValue = String(osNumber || '').trim();
+
+    if (!value || !osValue) {
+      return value;
+    }
+
+    const escaped = osValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const withoutOs = value.replace(new RegExp(`\\b${escaped}\\b`, 'g'), ' ');
+    const normalized = withoutOs
+      .split('-')
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
+      .join(' - ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    return normalized || value;
   }
 
   onAguardandoCardClick(item: EspelhoItem, fileInput: HTMLInputElement): void {
@@ -225,6 +256,10 @@ export class ProjetosEspelhosComponent implements OnInit {
 
   canGenerateEspelhos(): boolean {
     return this.markedCardIds.size > 0 && !this.isGeneratingEspelhos;
+  }
+
+  isSelectionFeedback(): boolean {
+    return this.generateMessage.startsWith('Cards selecionados:');
   }
 
   openProjectFilePicker(fileInput: HTMLInputElement): void {
@@ -360,14 +395,14 @@ export class ProjetosEspelhosComponent implements OnInit {
     };
 
     const words = normalized.split(/\s+/).filter(Boolean);
-    const abbreviated = words.map((word) => aliases[word] || word.slice(0, 4));
+    const abbreviated = words.map((word) => aliases[word] || word.slice(0, 20));
     const compact = abbreviated.join(' ');
 
-    if (compact.length <= 12) {
+    if (compact.length <= 80) {
       return compact;
     }
 
-    return `${compact.slice(0, 11)}…`;
+    return `${compact.slice(0, 79)}…`;
   }
 
   private refreshView(): void {

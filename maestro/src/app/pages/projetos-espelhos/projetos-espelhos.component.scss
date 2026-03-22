@@ -76,7 +76,11 @@
 .board-tabs {
   display: flex;
   gap: 0.45rem;
-  margin-bottom: 0.45rem;
+  margin-bottom: 0.05rem;
+}
+
+.board-header h2 {
+  margin: 0 0 0.35rem 0;
 }
 
 .board-tab {
@@ -84,8 +88,8 @@
   background: #f8fafc;
   color: #475569;
   border-radius: 999px;
-  min-height: 2.6rem;
-  padding: 0.55rem 1.2rem;
+  min-height: 2.1rem;
+  padding: 0.3rem 1rem;
   font-size: 0.96rem;
   font-weight: 700;
   cursor: pointer;
@@ -134,13 +138,13 @@
 }
 
 .generate-btn {
-  min-height: 2.45rem;
-  padding: 0 1.05rem;
+  min-height: 2.15rem;
+  padding: 0 0.85rem;
   border: 1px solid #c7d2fe;
   border-radius: 0.55rem;
   background: #eef2ff;
   color: #3730a3;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -158,10 +162,10 @@
 
 .select-btn,
 .clear-btn {
-  min-height: 2.9rem;
-  padding: 0 1.35rem;
+  min-height: 2.15rem;
+  padding: 0 0.85rem;
   border-radius: 0.55rem;
-  font-size: 1rem;
+  font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -195,7 +199,7 @@
 }
 
 .board-list-wrapper {
-  margin-top: 0.8rem;
+  margin-top: 0.3rem;
   overflow-y: auto;
   overflow-x: hidden;
   max-height: calc(100% - 2.1rem);
@@ -216,7 +220,7 @@
   padding: 0.48rem 0.55rem;
   background: #f8fafc;
   color: #334155;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   font-weight: 600;
   line-height: 1.25;
   height: 2.05rem;
@@ -272,7 +276,7 @@
   }
 
   .generate-btn {
-    min-height: 2.45rem;
-    font-size: 0.9rem;
+    min-height: 2.15rem;
+    font-size: 0.82rem;
   }
 }
