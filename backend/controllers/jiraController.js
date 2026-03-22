@@ -1533,6 +1533,38 @@ async function buscarDadosCardEspelho(cardId) {
   };
 }
 
+async function anexarPdfNoCardJira(cardId, pdfBuffer, fileName) {
+  const jiraUrl = process.env.JIRA_URL;
+  const email = process.env.JIRA_EMAIL;
+  const apiToken = process.env.JIRA_API_TOKEN;
+
+  if (!jiraUrl || !email || !apiToken) {
+    throw new Error('Credenciais do Jira não configuradas no servidor');
+  }
+
+  const auth = Buffer.from(`${email}:${apiToken}`).toString('base64');
+  const attachmentUrl = `${jiraUrl}/rest/api/3/issue/${encodeURIComponent(cardId)}/attachments`;
+  const safeFileName = sanitizeFileName(String(fileName || `${cardId}.pdf`));
+
+  const formData = new FormData();
+  formData.append('file', new Blob([pdfBuffer], { type: 'application/pdf' }), safeFileName);
+
+  const response = await fetch(attachmentUrl, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Basic ${auth}`,
+      'X-Atlassian-Token': 'no-check'
+    },
+    body: formData
+  });
+
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(`Falha ao anexar PDF no Jira (HTTP ${response.status}): ${details || 'sem detalhes'}`);
+  }
+}
+
 /**
  * Gera documento DOCX de espelho com base no template original.
  */
@@ -1832,6 +1864,15 @@ export const gerarEspelhos = async (req, res) => {
           message: `Nao foi possivel juntar o espelho com o arquivo selecionado: ${mergeError.message}`
         });
       }
+    }
+
+    try {
+      await anexarPdfNoCardJira(cardId, generatedBuffer, downloadName);
+    } catch (attachError) {
+      return res.status(500).json({
+        success: false,
+        message: `PDF gerado, mas não foi possível anexar no card ${cardId}: ${attachError.message}`
+      });
     }
 
     res.setHeader('Content-Type', contentType);
