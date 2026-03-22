@@ -372,7 +372,12 @@ export class JiraService {
   /**
    * Gera espelhos para os cards informados.
    */
-  gerarEspelhos(ids: string[], arquivoProjeto?: File | null, arquivosPorId?: Record<string, File>): Observable<any> {
+  gerarEspelhos(
+    ids: string[],
+    arquivoProjeto?: File | null,
+    arquivosPorId?: Record<string, File>,
+    shouldDownload: boolean = true
+  ): Observable<any> {
     console.log('🧩 [JiraService] gerarEspelhos iniciado');
     console.log('📋 IDs:', ids);
     console.log('🌐 URL:', `${this.apiUrl}/jira/gerar-espelhos`);
@@ -403,7 +408,9 @@ export class JiraService {
           responseType: 'blob'
         }).pipe(
         map((response: HttpResponse<Blob>) => {
-          this.saveBlobResponse(response, fileForId ? `espelho-${id}-projeto.pdf` : `espelho-${id}.pdf`);
+          if (shouldDownload) {
+            this.saveBlobResponse(response, fileForId ? `espelho-${id}-projeto.pdf` : `espelho-${id}.pdf`);
+          }
           return { id, success: true as const };
         }),
         catchError((error) => this.extractBlobErrorMessage(error).pipe(
@@ -424,7 +431,9 @@ export class JiraService {
         const failedItems = results.filter((item) => !item.success);
 
         const hasAnyFile = !!arquivoProjeto || Object.keys(arquivosPorId || {}).length > 0;
-        const actionText = hasAnyFile ? 'Espelhos juntados e baixados' : 'Espelhos baixados';
+        const actionText = shouldDownload
+          ? (hasAnyFile ? 'Espelhos juntados e baixados' : 'Espelhos baixados')
+          : (hasAnyFile ? 'Espelhos juntados' : 'Espelhos gerados');
 
         return {
           success: failedItems.length === 0,

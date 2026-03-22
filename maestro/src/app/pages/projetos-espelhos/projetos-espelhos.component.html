@@ -36,7 +36,7 @@
       </button>
     </div>
 
-    <div *ngIf="generateMessage && isSelectionFeedback()" class="generate-feedback" [class.success]="generateMessageType === 'success'" [class.error]="generateMessageType === 'error'">
+    <div *ngIf="generateMessage && generateMessageType === 'success'" class="generate-feedback success">
       {{ generateMessage }}
     </div>
 
@@ -71,7 +71,7 @@
       <button type="button" class="generate-btn" (click)="gerarEspelhos()" [disabled]="!canGenerateEspelhos()">{{ isGeneratingEspelhos ? 'Gerando...' : 'Gerar Espelhos' }}</button>
     </div>
 
-    <div *ngIf="generateMessage && !isSelectionFeedback()" class="generate-feedback" [class.success]="generateMessageType === 'success'" [class.error]="generateMessageType === 'error'">
+    <div *ngIf="generateMessage && generateMessageType === 'error'" class="generate-feedback error">
       {{ generateMessage }}
     </div>
 

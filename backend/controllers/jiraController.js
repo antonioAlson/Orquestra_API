@@ -1789,8 +1789,6 @@ export const gerarEspelhos = async (req, res) => {
       });
     }
 
-    const backendRoot = path.join(__dirname, '..');
-
     let arquivoProjetoBuffer = null;
     if (req.file?.buffer) {
       const mimeType = String(req.file.mimetype || '').toLowerCase();
@@ -1810,24 +1808,12 @@ export const gerarEspelhos = async (req, res) => {
     const cardId = normalizedIds[0];
     const cardData = await buscarDadosCardEspelho(cardId);
     const numeroOrdem = sanitizeFileName(String(cardData.numeroOrdem || cardId));
-    const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '.');
-    const hora = new Date().toTimeString().slice(0, 5).replace(':', '-');
-    const baseFileName = `${numeroOrdem} ${data} ${hora}`;
     let generatedBuffer;
     let contentType = 'application/pdf';
     let downloadName = `${numeroOrdem}.pdf`;
 
     try {
       generatedBuffer = await criarEspelhoPdfDoCodigo(cardData);
-      
-      // Salva PDF gerado em disco para depuração
-      const debugPdfPath = path.join(backendRoot, 'scripts', 'projetos', `${baseFileName}-debug.pdf`);
-      try {
-        await fs.promises.writeFile(debugPdfPath, generatedBuffer);
-        console.log('✅ PDF gerado salvo para depuração em:', debugPdfPath);
-      } catch (debugErr) {
-        console.warn('⚠️ Falha ao salvar PDF para depuração:', debugErr.message);
-      }
     } catch (pdfError) {
       console.error('❌ Erro ao gerar PDF:', pdfError.message);
       return res.status(500).json({
