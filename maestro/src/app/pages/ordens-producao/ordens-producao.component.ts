@@ -409,6 +409,10 @@ export class OrdensProducaoComponent implements OnInit {
     this.showReprogramPopup = false;
     this.reprogramPopupType = '';
     this.reprogramPopupMessage = '';
+    this.refreshView();
+
+    // Garante repaint mesmo quando o fechamento ocorre em sequência de eventos assíncronos.
+    setTimeout(() => this.refreshView(), 0);
   }
 
   openPrintModal(): void {
