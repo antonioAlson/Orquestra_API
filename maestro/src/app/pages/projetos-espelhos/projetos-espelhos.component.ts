@@ -25,7 +25,7 @@ interface EspelhoItemDisplay {
 })
 export class ProjetosEspelhosComponent implements OnInit {
   aguardandoProjetoItems: EspelhoItem[] = [];
-  activeAguardandoTab: 'aramida' | 'tenssylon' = 'aramida';
+  activeAguardandoTab: 'aramida' | 'tenssylon' = 'tenssylon';
   isLoadingAguardandoProjeto = false;
   loadErrorAguardandoProjeto = '';
   isGeneratingEspelhos = false;
@@ -36,9 +36,16 @@ export class ProjetosEspelhosComponent implements OnInit {
   isLoadingLogs = false;
   searchTerm = '';
 
+  // Modal de quantidade de peças
+  showQuantidadeModal = false;
+  quantidadePecas: number | null = null;
+  pendingCardForQuantity: string | null = null;
+  pendingFilesForQuantity: File[] = [];
+
   private markedCardIds = new Set<string>();
   private pendingCardIdForFileSelection: string | null = null;
-  private selectedFilesByCardId = new Map<string, File>();
+  private selectedFilesByCardId = new Map<string, File[]>(); // Array de arquivos por card
+  private quantidadeByCardId = new Map<string, number>(); // Quantidade de peças por card
 
   private readonly requestTimeoutMs = 60000;
 
@@ -159,7 +166,7 @@ export class ProjetosEspelhosComponent implements OnInit {
   }
 
   onAguardandoCardClick(item: EspelhoItem, fileInput: HTMLInputElement): void {
-    if (!item?.id || this.isLoadingAguardandoProjeto) {
+    if (!item?.id || this.isLoadingAguardandoProjeto || this.isGeneratingEspelhos) {
       return;
     }
 
@@ -171,7 +178,10 @@ export class ProjetosEspelhosComponent implements OnInit {
   }
 
   getSelectedFileNameForCard(cardId: string): string {
-    return this.selectedFilesByCardId.get(cardId)?.name || '';
+    const files = this.selectedFilesByCardId.get(cardId);
+    if (!files || files.length === 0) return '';
+    if (files.length === 1) return files[0].name;
+    return `${files.length} arquivos`;
   }
 
   hasSelectedFileForCard(cardId: string): boolean {
@@ -215,21 +225,6 @@ export class ProjetosEspelhosComponent implements OnInit {
     return items;
   }
 
-  private associateFileWithPendingCard(file: File): void {
-    const cardId = this.pendingCardIdForFileSelection;
-    this.pendingCardIdForFileSelection = null;
-
-    if (!cardId) {
-      return;
-    }
-
-    this.selectedFilesByCardId.set(cardId, file);
-    this.markedCardIds.add(cardId);
-    this.updateAssociationFeedbackMessage();
-
-    this.refreshView();
-  }
-
   private updateAssociationFeedbackMessage(): void {
     const selectedCardIds = Array.from(this.markedCardIds)
       .filter((id) => this.selectedFilesByCardId.has(id))
@@ -241,13 +236,23 @@ export class ProjetosEspelhosComponent implements OnInit {
       return;
     }
 
-    const selectedOsNumbers = selectedCardIds.map((id) => this.getOsNumberForCard(id));
+    const selectedInfo = selectedCardIds.map((id) => {
+      const osNum = this.getOsNumberForCard(id);
+      const fileCount = this.selectedFilesByCardId.get(id)?.length || 0;
+      const quantidade = this.quantidadeByCardId.get(id) || 0;
+      
+      if (fileCount > 1) {
+        return `${osNum} (${fileCount} PDFs, ${quantidade}x)`;
+      } else {
+        return `${osNum} (${quantidade}x)`;
+      }
+    });
 
     this.generateMessageType = 'success';
-    this.generateMessage = `Cards selecionados: ${selectedOsNumbers.join(', ')}`;
+    this.generateMessage = `Cards selecionados: ${selectedInfo.join(', ')}`;
   }
 
-  private getOsNumberForCard(cardId: string): string {
+  getOsNumberForCard(cardId: string): string {
     const item = this.aguardandoProjetoItems.find((card) => card.id === cardId);
     const resumo = String(item?.resumo || '').trim();
 
@@ -263,14 +268,29 @@ export class ProjetosEspelhosComponent implements OnInit {
     return resumo;
   }
 
-  private buildFilesByCardPayload(ids: string[]): Record<string, File> {
+  getVeiculoForCard(cardId: string): string {
+    const item = this.aguardandoProjetoItems.find((card) => card.id === cardId);
+    return String(item?.veiculo || 'Não informado').trim();
+  }
+
+  private buildFilesByCardPayload(ids: string[]): Record<string, File[]> {
     return ids.reduce((acc, id) => {
-      const selectedFile = this.selectedFilesByCardId.get(id);
-      if (selectedFile) {
-        acc[id] = selectedFile;
+      const selectedFiles = this.selectedFilesByCardId.get(id);
+      if (selectedFiles && selectedFiles.length > 0) {
+        acc[id] = selectedFiles;
       }
       return acc;
-    }, {} as Record<string, File>);
+    }, {} as Record<string, File[]>);
+  }
+
+  private buildQuantidadesByCardPayload(ids: string[]): Record<string, number> {
+    return ids.reduce((acc, id) => {
+      const quantidade = this.quantidadeByCardId.get(id);
+      if (quantidade) {
+        acc[id] = quantidade;
+      }
+      return acc;
+    }, {} as Record<string, number>);
   }
 
   private hasFileForAllSelectedCards(ids: string[]): boolean {
@@ -284,6 +304,7 @@ export class ProjetosEspelhosComponent implements OnInit {
   private clearSelectedCardsAndFiles(): void {
     this.markedCardIds.clear();
     this.selectedFilesByCardId.clear();
+    this.quantidadeByCardId.clear();
 
     this.refreshView();
   }
@@ -300,40 +321,74 @@ export class ProjetosEspelhosComponent implements OnInit {
     return this.generateMessage.startsWith('Cards selecionados:');
   }
 
-  openProjectFilePicker(fileInput: HTMLInputElement): void {
-    if (this.isGeneratingEspelhos) {
-      return;
-    }
-
-    fileInput.value = '';
-    fileInput.click();
-  }
-
   onProjectFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0] || null;
+    const files = input.files;
 
-    if (!file) {
+    if (!files || files.length === 0) {
       this.pendingCardIdForFileSelection = null;
       return;
     }
 
-    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    if (!isPdf) {
+    // Validar que todos são PDFs
+    const filesArray = Array.from(files);
+    const nonPdfFiles = filesArray.filter(
+      file => file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')
+    );
+
+    if (nonPdfFiles.length > 0) {
       this.pendingCardIdForFileSelection = null;
       this.generateMessageType = 'error';
-      this.generateMessage = 'Selecione um arquivo PDF para juntar com o espelho.';
+      this.generateMessage = 'Selecione apenas arquivos PDF para juntar com o espelho.';
       this.refreshView();
       return;
     }
 
-    if (this.pendingCardIdForFileSelection) {
-      this.associateFileWithPendingCard(file);
+    if (!this.pendingCardIdForFileSelection) {
+      this.generateMessageType = 'error';
+      this.generateMessage = 'Clique em um card para escolher os PDFs desse card.';
+      this.refreshView();
       return;
     }
 
-    this.generateMessageType = 'error';
-    this.generateMessage = 'Clique em um card para escolher o PDF desse card.';
+    // Mostrar modal para solicitar quantidade de peças
+    this.pendingCardForQuantity = this.pendingCardIdForFileSelection;
+    this.pendingFilesForQuantity = filesArray;
+    this.quantidadePecas = null;
+    this.showQuantidadeModal = true;
+    this.refreshView();
+  }
+
+  confirmarQuantidade(): void {
+    if (!this.quantidadePecas || this.quantidadePecas < 1 || !this.pendingCardForQuantity) {
+      return;
+    }
+
+    const cardId = this.pendingCardForQuantity;
+    const files = this.pendingFilesForQuantity;
+
+    // Armazenar arquivos e quantidade
+    this.selectedFilesByCardId.set(cardId, files);
+    this.quantidadeByCardId.set(cardId, this.quantidadePecas);
+    this.markedCardIds.add(cardId);
+
+    // Limpar estados temporários
+    this.showQuantidadeModal = false;
+    this.pendingCardIdForFileSelection = null;
+    this.pendingCardForQuantity = null;
+    this.pendingFilesForQuantity = [];
+    this.quantidadePecas = null;
+
+    this.updateAssociationFeedbackMessage();
+    this.refreshView();
+  }
+
+  cancelarQuantidade(): void {
+    this.showQuantidadeModal = false;
+    this.pendingCardIdForFileSelection = null;
+    this.pendingCardForQuantity = null;
+    this.pendingFilesForQuantity = [];
+    this.quantidadePecas = null;
     this.refreshView();
   }
 
@@ -361,13 +416,14 @@ export class ProjetosEspelhosComponent implements OnInit {
     }
 
     const filesByCard = this.buildFilesByCardPayload(ids);
+    const quantidadesByCard = this.buildQuantidadesByCardPayload(ids);
 
     this.isGeneratingEspelhos = true;
     this.generateMessage = 'Gerando espelhos e juntando com os PDFs selecionados...';
     this.generateMessageType = '';
     this.refreshView();
 
-    this.jiraService.gerarEspelhos(ids, null, filesByCard)
+    this.jiraService.gerarEspelhos(ids, null, filesByCard, true, quantidadesByCard)
       .pipe(
         take(1),
         finalize(() => {

@@ -375,8 +375,9 @@ export class JiraService {
   gerarEspelhos(
     ids: string[],
     arquivoProjeto?: File | null,
-    arquivosPorId?: Record<string, File>,
-    shouldDownload: boolean = true
+    arquivosPorId?: Record<string, File[]>,
+    shouldDownload: boolean = true,
+    quantidadesPorId?: Record<string, number>
   ): Observable<any> {
     console.log('🧩 [JiraService] gerarEspelhos iniciado');
     console.log('📋 IDs:', ids);
@@ -398,9 +399,10 @@ export class JiraService {
 
     return from(normalizedIds).pipe(
       mergeMap((id) => {
-        const fileForId = arquivosPorId?.[id] || arquivoProjeto || null;
-        const payload = fileForId
-          ? this.buildEspelhoFormData(id, fileForId)
+        const filesForId = arquivosPorId?.[id] || (arquivoProjeto ? [arquivoProjeto] : null);
+        const quantidade = quantidadesPorId?.[id] || 1;
+        const payload = filesForId
+          ? this.buildEspelhoFormData(id, filesForId, quantidade)
           : { ids: [id] };
 
         return this.http.post(`${this.apiUrl}/jira/gerar-espelhos`, payload, {
@@ -409,7 +411,7 @@ export class JiraService {
         }).pipe(
         map((response: HttpResponse<Blob>) => {
           if (shouldDownload) {
-            this.saveBlobResponse(response, fileForId ? `espelho-${id}-projeto.pdf` : `espelho-${id}.pdf`);
+            this.saveBlobResponse(response, filesForId ? `espelho-${id}-projeto.pdf` : `espelho-${id}.pdf`);
           }
           return { id, success: true as const };
         }),
@@ -459,10 +461,16 @@ export class JiraService {
     );
   }
 
-  private buildEspelhoFormData(id: string, arquivoProjeto: File): FormData {
+  private buildEspelhoFormData(id: string, arquivosProjeto: File[], quantidade: number): FormData {
     const formData = new FormData();
     formData.append('ids[]', id);
-    formData.append('arquivoProjeto', arquivoProjeto, arquivoProjeto.name);
+    formData.append('quantidade', quantidade.toString());
+    
+    // Adicionar múltiplos arquivos
+    arquivosProjeto.forEach((file, index) => {
+      formData.append('arquivoProjeto[]', file, file.name);
+    });
+    
     return formData;
   }
 

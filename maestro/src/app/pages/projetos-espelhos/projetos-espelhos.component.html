@@ -14,6 +14,7 @@
       class="hidden-file-input"
       type="file"
       accept="application/pdf,.pdf"
+      multiple
       (change)="onProjectFileSelected($event)"
     />
 
@@ -23,8 +24,10 @@
           type="button"
           class="board-tab"
           [class.active]="activeAguardandoTab === 'aramida'"
+          [class.disabled]="true"
           [attr.aria-selected]="activeAguardandoTab === 'aramida'"
-          (click)="setAguardandoTab('aramida')"
+          [disabled]="true"
+          title="Categoria bloqueada temporariamente"
         >
           Aramida
         </button>
@@ -97,7 +100,7 @@
 
     <div class="between-boards-actions">
       <button *ngIf="hasAnySelectedFile()" type="button" class="clear-btn" (click)="clearSelectedProjectFile()" [disabled]="isGeneratingEspelhos">
-        Limpar Arquivo
+        Limpar Arquivos
       </button>
       <button type="button" class="generate-btn" (click)="gerarEspelhos()" [disabled]="!canGenerateEspelhos()">{{ isGeneratingEspelhos ? 'Gerando...' : 'Gerar Espelhos' }}</button>
     </div>
@@ -141,6 +144,62 @@
 
     <div class="modal-footer">
       <button type="button" class="btn-secondary" (click)="fecharLogsModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Quantidade de Peças -->
+<div class="modal-overlay" *ngIf="showQuantidadeModal" (click)="cancelarQuantidade()">
+  <div class="modal-quantidade" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+          <line x1="12" y1="22.08" x2="12" y2="12"></line>
+        </svg>
+        Quantidade de Peças
+      </h3>
+      <button type="button" class="icon-btn" (click)="cancelarQuantidade()" aria-label="Fechar">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <div class="quantidade-content">
+      <p class="quantidade-info">
+        Card: <strong>{{ pendingCardForQuantity ? getOsNumberForCard(pendingCardForQuantity) : '' }}</strong>
+      </p>
+      <p class="quantidade-info" *ngIf="pendingCardForQuantity">
+        Veículo: <strong>{{ getVeiculoForCard(pendingCardForQuantity) }}</strong>
+      </p>
+      <p class="quantidade-info" *ngIf="pendingFilesForQuantity.length > 0">
+        Arquivos: <strong>{{ pendingFilesForQuantity.length }}</strong> PDF(s) selecionado(s)
+      </p>
+      
+      <div class="form-group">
+        <label for="quantidadePecas">Quantidade de peças:</label>
+        <input 
+          type="number" 
+          id="quantidadePecas" 
+          class="input-quantidade" 
+          [(ngModel)]="quantidadePecas"
+          min="1"
+          max="9999"
+          placeholder="Digite a quantidade"
+          (keydown.enter)="confirmarQuantidade()"
+          autofocus
+        />
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" class="btn-secondary" (click)="cancelarQuantidade()">Cancelar</button>
+      <button type="button" class="btn-primary" (click)="confirmarQuantidade()" [disabled]="!quantidadePecas || quantidadePecas < 1">
+        Confirmar
+      </button>
     </div>
   </div>
 </div>

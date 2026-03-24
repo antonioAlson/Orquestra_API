@@ -16,7 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Cria PDF idêntico ao template Word original
-async function criarEspelhoPdfDoCodigo(cardData) {
+async function criarEspelhoPdfDoCodigo(cardData, quantidadePecas = 1) {
   try {
     console.log('📄 [1/7] Iniciando criação do PDF...');
     const pdfDoc = await PDFDocument.create();
@@ -142,7 +142,7 @@ async function criarEspelhoPdfDoCodigo(cardData) {
     { label: 'Ano:', value: cardData.anoVeiculo },
     { label: 'Projeto:', value: cardData.numeroProjeto },
     { label: 'Data:', value: dataAtual },
-    { label: 'Quantidade de peças:', value: '' },
+    { label: 'Quantidade de peças:', value: String(quantidadePecas) },
     { label: 'OS:', value: cardData.numeroOrdem }
   ];
   
@@ -1919,31 +1919,35 @@ export const gerarEspelhos = async (req, res) => {
       });
     }
 
-    let arquivoProjetoBuffer = null;
-    const incluiuPdf = !!req.file?.buffer;
+    let arquivosProjetoBuffers = [];
+    const incluiuPdf = Array.isArray(req.files) && req.files.length > 0;
+    const quantidadePecas = parseInt(req.body.quantidade) || 1; // Capturar quantidade de peças
     
-    if (req.file?.buffer) {
-      const mimeType = String(req.file.mimetype || '').toLowerCase();
-      const originalName = String(req.file.originalname || '').toLowerCase();
-      const isPdf = mimeType.includes('pdf') || originalName.endsWith('.pdf');
+    if (Array.isArray(req.files) && req.files.length > 0) {
+      // Validar que todos são PDFs
+      for (const file of req.files) {
+        const mimeType = String(file.mimetype || '').toLowerCase();
+        const originalName = String(file.originalname || '').toLowerCase();
+        const isPdf = mimeType.includes('pdf') || originalName.endsWith('.pdf');
 
-      if (!isPdf) {
-        registrarGeracaoEspelhos({
-          usuario: usuarioNome,
-          cards: normalizedIds,
-          sucesso: false,
-          quantidadeGerada: 0,
-          erro: `Arquivo enviado não é PDF: ${originalName}`,
-          incluiuPdf: false
-        });
-        
-        return res.status(400).json({
-          success: false,
-          message: 'O arquivo selecionado deve ser um PDF.'
-        });
+        if (!isPdf) {
+          registrarGeracaoEspelhos({
+            usuario: usuarioNome,
+            cards: normalizedIds,
+            sucesso: false,
+            quantidadeGerada: 0,
+            erro: `Arquivo enviado não é PDF: ${originalName}`,
+            incluiuPdf: false
+          });
+          
+          return res.status(400).json({
+            success: false,
+            message: 'Todos os arquivos devem ser PDFs.'
+          });
+        }
+
+        arquivosProjetoBuffers.push(file.buffer);
       }
-
-      arquivoProjetoBuffer = req.file.buffer;
     }
 
     const cardId = normalizedIds[0];
@@ -1954,7 +1958,7 @@ export const gerarEspelhos = async (req, res) => {
     let downloadName = `${numeroOrdem}.pdf`;
 
     try {
-      generatedBuffer = await criarEspelhoPdfDoCodigo(cardData);
+      generatedBuffer = await criarEspelhoPdfDoCodigo(cardData, quantidadePecas);
     } catch (pdfError) {
       console.error('❌ Erro ao gerar PDF:', pdfError.message);
       
@@ -1977,9 +1981,14 @@ export const gerarEspelhos = async (req, res) => {
       });
     }
 
-    if (arquivoProjetoBuffer) {
+    if (arquivosProjetoBuffers.length > 0) {
       try {
-        generatedBuffer = Buffer.from(await mesclarPdfBuffers(generatedBuffer, arquivoProjetoBuffer));
+        // Mesclar espelho com todos os arquivos selecionados
+        let mergedBuffer = generatedBuffer;
+        for (const projetoBuffer of arquivosProjetoBuffers) {
+          mergedBuffer = Buffer.from(await mesclarPdfBuffers(mergedBuffer, projetoBuffer));
+        }
+        generatedBuffer = mergedBuffer;
         downloadName = `${numeroOrdem}.pdf`;
       } catch (mergeError) {
         registrarGeracaoEspelhos({
@@ -1992,13 +2001,13 @@ export const gerarEspelhos = async (req, res) => {
           detalhes: {
             'Número Ordem': numeroOrdem,
             'Card ID': cardId,
-            'Nome Arquivo': req.file?.originalname
+            'Quantidade Arquivos': arquivosProjetoBuffers.length
           }
         });
         
         return res.status(400).json({
           success: false,
-          message: `Nao foi possivel juntar o espelho com o arquivo selecionado: ${mergeError.message}`
+          message: `Nao foi possivel juntar o espelho com os arquivos selecionados: ${mergeError.message}`
         });
       }
     }
@@ -2017,7 +2026,8 @@ export const gerarEspelhos = async (req, res) => {
           'Número Ordem': numeroOrdem,
           'Card ID': cardId,
           'Nome Arquivo': downloadName,
-          'Tamanho PDF': `${(generatedBuffer.length / 1024).toFixed(2)} KB`
+          'Tamanho PDF': `${(generatedBuffer.length / 1024).toFixed(2)} KB`,
+          'Quantidade Peças': quantidadePecas
         }
       });
       
@@ -2039,6 +2049,10 @@ export const gerarEspelhos = async (req, res) => {
     // Sucesso total
     const tempoDecorrido = ((Date.now() - startTime) / 1000).toFixed(2);
     
+    const arquivosNomes = Array.isArray(req.files) && req.files.length > 0
+      ? req.files.map(f => f.originalname).join(', ')
+      : 'Não incluído';
+    
     registrarGeracaoEspelhos({
       usuario: usuarioNome,
       cards: normalizedIds,
@@ -2051,7 +2065,9 @@ export const gerarEspelhos = async (req, res) => {
         'Nome Arquivo': downloadName,
         'Tamanho PDF': `${(generatedBuffer.length / 1024).toFixed(2)} KB`,
         'Tempo de Processamento': `${tempoDecorrido}s`,
-        'Arquivo Projeto': incluiuPdf ? req.file?.originalname : 'Não incluído'
+        'Arquivos Projeto': incluiuPdf ? arquivosNomes : 'Não incluído',
+        'Quantidade Arquivos': incluiuPdf ? arquivosProjetoBuffers.length : 0,
+        'Quantidade Peças': quantidadePecas
       }
     });
 
@@ -2067,7 +2083,7 @@ export const gerarEspelhos = async (req, res) => {
       sucesso: false,
       quantidadeGerada: 0,
       erro: `Erro não tratado: ${error.message}`,
-      incluiuPdf: !!req.file?.buffer,
+      incluiuPdf: Array.isArray(req.files) && req.files.length > 0,
       detalhes: {
         'Stack': error.stack?.split('\n').slice(0, 3).join(' | ')
       }

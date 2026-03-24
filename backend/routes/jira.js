@@ -42,8 +42,8 @@ router.get('/download-arquivo/:cardId/:directory/*', authenticate, downloadArqui
 // Download de anexo do Jira
 router.get('/download-arquivo-jira/:cardId/:attachmentId/:filename', authenticate, downloadArquivoJira);
 
-// Gerar espelho
-router.post('/gerar-espelhos', authenticate, upload.single('arquivoProjeto'), gerarEspelhos);
+// Gerar espelho (aceita múltiplos arquivos)
+router.post('/gerar-espelhos', authenticate, upload.array('arquivoProjeto[]', 10), gerarEspelhos);
 
 // Obter logs de geração de espelhos
 router.get('/logs-espelhos', authenticate, obterLogsEspelhos);
