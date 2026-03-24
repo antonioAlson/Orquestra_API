@@ -13,7 +13,7 @@ const PORT = Number(process.env.PORT) || 3000;
 
 // Middlewares
 app.use(cors({
-  origin: '*', // Em produção, especifique a origem do seu frontend
+  origin: process.env.CORS_ORIGIN || '*', // Configurável via variável de ambiente
   credentials: true,
   exposedHeaders: ['Content-Disposition']
 }));

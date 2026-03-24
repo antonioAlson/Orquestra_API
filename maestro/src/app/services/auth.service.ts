@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, BehaviorSubject, tap } from 'rxjs';
+import { environment } from '../../environments/environment';
 
 // Interfaces
 interface User {
@@ -49,7 +50,7 @@ interface UpdateUserAccessResponse {
   providedIn: 'root'
 })
 export class AuthService {
-  private apiUrl = 'http://localhost:3000/api/auth';
+  private apiUrl = `${environment.apiUrl}/auth`;
   private tokenKey = 'maestro_token';
   private tabsStorageKey = 'maestro_active_tabs';
   private tabSessionKey = 'maestro_tab_id';

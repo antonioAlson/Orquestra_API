@@ -115,6 +115,7 @@ v2.0/
 
 - **Backend Setup**: [backend/SETUP.md](backend/SETUP.md)
 - **Integração Angular-API**: [backend/INTEGRATION.md](backend/INTEGRATION.md)
+- **Deploy em VPS**: [DEPLOY-VPS.md](DEPLOY-VPS.md) ⭐ **Novo!**
 
 ## 🛠️ Scripts Disponíveis
 
