@@ -46,6 +46,7 @@ export class UsersManageComponent implements OnInit {
     { route: '/pcp/acompanhamento', label: 'PCP - Acompanhamento' },
     { route: '/pcp/relatorios', label: 'PCP - Relatorios PCP' },
     { route: '/projetos/espelhos', label: 'Projetos - Espelhos' },
+    { route: '/projetos/cadastro', label: 'Projetos - Cadastro' },
     { route: '/users', label: 'Usuarios - Gerenciar' },
     { route: '/users/acesso', label: 'Usuarios - Acesso' },
     { route: '/reports', label: 'Relatorios' },

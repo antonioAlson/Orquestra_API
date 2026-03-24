@@ -130,10 +130,19 @@ export class HomeComponent implements OnInit, OnDestroy {
       return '';
     }
 
-    const linePoints = this.getLinePoints(series);
+    // Começar no primeiro ponto
     const firstX = this.getPointXByDay(series[0].day);
+    const firstY = this.getPointY(series[0].value);
     const lastX = this.getPointXByDay(series[series.length - 1].day);
-    return `M ${firstX},100 L ${linePoints} L ${lastX},100 Z`;
+    
+    // Construir linha de pontos (pular o primeiro ponto, já incluído no M)
+    const pathPoints = series
+      .slice(1)
+      .map((point) => `L ${this.getPointXByDay(point.day)},${this.getPointY(point.value)}`)
+      .join(' ');
+    
+    // M para o primeiro ponto, desenhar linha, descer para a base, voltar ao início na base, fechar
+    return `M ${firstX},${firstY} ${pathPoints} L ${lastX},100 L ${firstX},100 Z`;
   }
 
   private simulateDailySeries(days: number, minValue: number, maxValue: number): DailyMetricPoint[] {

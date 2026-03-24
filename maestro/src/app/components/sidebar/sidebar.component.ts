@@ -58,6 +58,11 @@ export class SidebarComponent {
       label: 'Projetos',
       children: [
         {
+          icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+          label: 'Cadastro',
+          route: '/projetos/cadastro'
+        },
+        {
           icon: 'M4 6h16M4 12h16M4 18h16',
           label: 'Espelhos',
           route: '/projetos/espelhos'

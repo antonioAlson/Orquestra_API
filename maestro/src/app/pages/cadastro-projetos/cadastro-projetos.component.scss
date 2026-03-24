@@ -1,0 +1,47 @@
+.cadastro-projetos-container {
+  padding: 0.75rem 2rem 2rem 2rem;
+  background: #f3f4f6;
+  min-height: 100vh;
+}
+
+.header {
+  margin-bottom: 1.5rem;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  min-height: 46px;
+}
+
+.header-content h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.header-brand {
+  height: 52px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+  align-self: center;
+}
+
+.content {
+  background: #ffffff;
+  border: 1px solid #dbe1e8;
+  border-radius: 1rem;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.page-info {
+  text-align: center;
+  padding: 3rem;
+  color: #6b7280;
+  font-size: 1.1rem;
+}

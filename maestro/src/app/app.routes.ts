@@ -45,6 +45,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/projetos-espelhos/projetos-espelhos.component').then(m => m.ProjetosEspelhosComponent)
       },
       {
+        path: 'projetos/cadastro',
+        loadComponent: () => import('./pages/cadastro-projetos/cadastro-projetos.component').then(m => m.CadastroProjetosComponent)
+      },
+      {
         path: 'reports',
         loadComponent: () => import('./pages/dashboard/dashboard.component').then(m => m.HomeComponent)
       },
