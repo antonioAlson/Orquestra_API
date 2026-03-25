@@ -16,6 +16,39 @@ import pool from '../config/database.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+/**
+ * Busca credenciais do Jira do usuário logado no banco de dados
+ * @param {number} userId - ID do usuário logado
+ * @returns {Promise<{email: string, apiToken: string}>} Credenciais do Jira
+ * @throws {Error} Se credenciais não estiverem configuradas
+ */
+async function getUserJiraCredentials(userId) {
+  try {
+    const result = await pool.query(
+      'SELECT email, api_token FROM maestro.users WHERE id = $1',
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('Usuário não encontrado');
+    }
+
+    const { email, api_token } = result.rows[0];
+
+    if (!email || !api_token) {
+      throw new Error('Credenciais do Jira não configuradas para este usuário. Configure no perfil ou contate o administrador.');
+    }
+
+    return {
+      email: email,
+      apiToken: api_token
+    };
+  } catch (error) {
+    console.error('❌ Erro ao buscar credenciais do Jira:', error.message);
+    throw error;
+  }
+}
+
 // Cria PDF idêntico ao template Word original
 async function criarEspelhoPdfDoCodigo(cardData, quantidadePecas = 1) {
   try {
@@ -469,10 +502,8 @@ function toJiraFileResult(req, cardId, attachment) {
   };
 }
 
-async function buscarArquivosNoJira(cardId, req) {
+async function buscarArquivosNoJira(cardId, req, email, apiToken) {
   const jiraUrl = process.env.JIRA_URL;
-  const email = process.env.JIRA_EMAIL;
-  const apiToken = process.env.JIRA_API_TOKEN;
 
   if (!jiraUrl || !email || !apiToken) {
     return [];
@@ -524,9 +555,11 @@ export const getJiraIssues = async (req, res) => {
   try {
     console.log('🔍 Iniciando busca de issues do Jira...');
 
+    // Buscar credenciais do usuário logado
+    const credentials = await getUserJiraCredentials(req.user.id);
+    const { email, apiToken } = credentials;
+
     const jiraUrl = process.env.JIRA_URL;
-    const email = process.env.JIRA_EMAIL;
-    const apiToken = process.env.JIRA_API_TOKEN;
 
     if (!jiraUrl || !email || !apiToken) {
       console.error('❌ Credenciais do Jira não configuradas');
@@ -726,9 +759,11 @@ export const getContecIssues = async (req, res) => {
   try {
     console.log('🔍 Iniciando busca de issues CONTEC do Jira...');
 
+    // Buscar credenciais do usuário logado
+    const credentials = await getUserJiraCredentials(req.user.id);
+    const { email, apiToken } = credentials;
+
     const jiraUrl = process.env.JIRA_URL;
-    const email = process.env.JIRA_EMAIL;
-    const apiToken = process.env.JIRA_API_TOKEN;
 
     if (!jiraUrl || !email || !apiToken) {
       console.error('❌ Credenciais do Jira não configuradas');
@@ -929,6 +964,10 @@ export const reprogramarEmMassa = async (req, res) => {
   try {
     console.log('🚀 Iniciando reprogramação em massa...');
 
+    // Buscar credenciais do usuário logado
+    const credentials = await getUserJiraCredentials(req.user.id);
+    const { email, apiToken } = credentials;
+
     const JIRA_UPDATE_TIMEOUT_MS = 45000; // 45 segundos por card
 
     const { ids, date } = req.body;
@@ -946,8 +985,6 @@ export const reprogramarEmMassa = async (req, res) => {
     const dateValue = date || null;
 
     const jiraUrl = process.env.JIRA_URL;
-    const email = process.env.JIRA_EMAIL;
-    const apiToken = process.env.JIRA_API_TOKEN;
     const campoPrevisao = 'customfield_10245';
 
     if (!jiraUrl || !email || !apiToken) {
@@ -1093,9 +1130,11 @@ export const atualizarDatasIndividuais = async (req, res) => {
       });
     }
 
+    // Buscar credenciais do usuário logado
+    const credentials = await getUserJiraCredentials(req.user.id);
+    const { email, apiToken } = credentials;
+
     const jiraUrl = process.env.JIRA_URL;
-    const email = process.env.JIRA_EMAIL;
-    const apiToken = process.env.JIRA_API_TOKEN;
     const campoPrevisao = 'customfield_10245';
 
     if (!jiraUrl || !email || !apiToken) {
@@ -1247,6 +1286,10 @@ export const buscarArquivosPorIds = async (req, res) => {
       });
     }
 
+    // Buscar credenciais do usuário logado
+    const credentials = await getUserJiraCredentials(req.user.id);
+    const { email, apiToken } = credentials;
+
     // Diretório base onde estão os arquivos locais
     const basePdfPath = process.env.PDF_BASE_PATH || 'C:\\OPs';
     console.log(`📁 Buscando PDFs para ${ids.length} cards em: ${basePdfPath}`);
@@ -1283,7 +1326,7 @@ export const buscarArquivosPorIds = async (req, res) => {
           }
         }
 
-        const jiraFiles = await buscarArquivosNoJira(cardId, req);
+        const jiraFiles = await buscarArquivosNoJira(cardId, req, email, apiToken);
 
         const dedupeMap = new Map();
         [...localFiles, ...jiraFiles].forEach((file) => {
@@ -1383,9 +1426,12 @@ export const downloadArquivo = async (req, res) => {
 export const downloadArquivoJira = async (req, res) => {
   try {
     const { cardId, attachmentId, filename } = req.params;
+    
+    // Buscar credenciais do usuário logado
+    const credentials = await getUserJiraCredentials(req.user.id);
+    const { email, apiToken } = credentials;
+    
     const jiraUrl = process.env.JIRA_URL;
-    const email = process.env.JIRA_EMAIL;
-    const apiToken = process.env.JIRA_API_TOKEN;
 
     if (!jiraUrl || !email || !apiToken) {
       return res.status(500).json({
@@ -1440,7 +1486,7 @@ export const downloadArquivoJira = async (req, res) => {
 /**
  * Busca campos específicos de um card Jira para geração de espelho.
  */
-async function buscarDadosCardEspelho(cardId) {
+async function buscarDadosCardEspelho(cardId, email, apiToken) {
   const fieldToString = (value) => {
     if (value === null || value === undefined) {
       return '';
@@ -1506,8 +1552,6 @@ async function buscarDadosCardEspelho(cardId) {
   };
 
   const jiraUrl = process.env.JIRA_URL;
-  const email = process.env.JIRA_EMAIL;
-  const apiToken = process.env.JIRA_API_TOKEN;
 
   if (!jiraUrl || !email || !apiToken) {
     throw new Error('Credenciais do Jira não configuradas no servidor');
@@ -1537,10 +1581,8 @@ async function buscarDadosCardEspelho(cardId) {
   };
 }
 
-async function anexarPdfNoCardJira(cardId, pdfBuffer, fileName) {
+async function anexarPdfNoCardJira(cardId, pdfBuffer, fileName, email, apiToken) {
   const jiraUrl = process.env.JIRA_URL;
-  const email = process.env.JIRA_EMAIL;
-  const apiToken = process.env.JIRA_API_TOKEN;
 
   if (!jiraUrl || !email || !apiToken) {
     throw new Error('Credenciais do Jira não configuradas no servidor');
@@ -1572,10 +1614,8 @@ async function anexarPdfNoCardJira(cardId, pdfBuffer, fileName) {
 /**
  * Transiciona o status de um card no Jira para "Liberado Engenharia"
  */
-async function transicionarStatusCard(cardId, statusNome = 'Liberado Engenharia') {
+async function transicionarStatusCard(cardId, email, apiToken, statusNome = 'Liberado Engenharia') {
   const jiraUrl = process.env.JIRA_URL;
-  const email = process.env.JIRA_EMAIL;
-  const apiToken = process.env.JIRA_API_TOKEN;
 
   if (!jiraUrl || !email || !apiToken) {
     throw new Error('Credenciais do Jira não configuradas no servidor');
@@ -1863,6 +1903,10 @@ export const gerarEspelhos = async (req, res) => {
   const usuarioNome = req.user?.name || usuarioEmail;
   
   try {
+    // Buscar credenciais do usuário logado
+    const credentials = await getUserJiraCredentials(req.user.id);
+    const { email, apiToken } = credentials;
+
     const bodyIds = req.body?.ids ?? req.body?.['ids[]'];
     const ids = Array.isArray(bodyIds)
       ? bodyIds
@@ -1952,7 +1996,7 @@ export const gerarEspelhos = async (req, res) => {
     }
 
     const cardId = normalizedIds[0];
-    const cardData = await buscarDadosCardEspelho(cardId);
+    const cardData = await buscarDadosCardEspelho(cardId, email, apiToken);
     const numeroOrdem = sanitizeFileName(String(cardData.numeroOrdem || cardId));
     let generatedBuffer;
     let contentType = 'application/pdf';
@@ -2014,7 +2058,7 @@ export const gerarEspelhos = async (req, res) => {
     }
 
     try {
-      await anexarPdfNoCardJira(cardId, generatedBuffer, downloadName);
+      await anexarPdfNoCardJira(cardId, generatedBuffer, downloadName, email, apiToken);
     } catch (attachError) {
       registrarGeracaoEspelhos({
         usuario: usuarioNome,
@@ -2040,7 +2084,7 @@ export const gerarEspelhos = async (req, res) => {
 
     // Transicionar status do card para "Liberado Engenharia"
     try {
-      await transicionarStatusCard(cardId);
+      await transicionarStatusCard(cardId, email, apiToken);
       console.log(`✅ Status do card ${cardId} alterado para "Liberado Engenharia"`);
     } catch (statusError) {
       console.warn(`⚠️ Não foi possível alterar o status do card ${cardId}:`, statusError.message);
