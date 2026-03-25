@@ -5,13 +5,23 @@ dotenv.config();
 
 const { Pool } = pg;
 
+// Validar variáveis de ambiente obrigatórias
+const requiredEnvVars = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'];
+const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingVars.length > 0) {
+  console.error('❌ Variáveis de ambiente faltando:', missingVars.join(', '));
+  console.error('💡 Certifique-se de criar o arquivo .env na pasta backend/');
+  process.exit(1);
+}
+
 // Configuração do pool de conexões
 const pool = new Pool({
   host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
+  port: Number(process.env.DB_PORT),
   database: process.env.DB_NAME,
   user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  password: String(process.env.DB_PASSWORD),
   max: 20, // Número máximo de conexões no pool
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
