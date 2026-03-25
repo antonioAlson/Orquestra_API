@@ -373,6 +373,67 @@ export class JiraService {
   }
 
   /**
+   * Imprime PDFs automaticamente usando o servidor
+   * @param files - Array de arquivos para impressão
+   * @param printer - Nome da impressora (opcional - usa padrão)
+   * @param options - Opções de impressão
+   */
+  imprimirAutomatico(
+    files: Array<{url: string, name: string, cardId: string}>,
+    printer?: string,
+    options?: {
+      grayscale?: boolean,
+      duplex?: boolean,
+      copies?: number
+    }
+  ): Observable<any> {
+    console.log('🖨️ [JiraService] imprimirAutomatico iniciado');
+    console.log('📋 Arquivos:', files.length);
+    console.log('🖨️ Impressora:', printer || '(padrão)');
+    console.log('⚙️ Opções:', options);
+    console.log('🌐 URL:', `${this.apiUrl}/print/print`);
+
+    return this.http.post<any>(`${this.apiUrl}/print/print`, {
+      files,
+      printer,
+      options: options || {
+        grayscale: true,
+        duplex: true,
+        copies: 1
+      }
+    }).pipe(
+      tap({
+        next: (response) => {
+          console.log('✅ [JiraService] Resposta de impressão:', response);
+          console.log('📊 Sucesso:', response?.success);
+        },
+        error: (error) => {
+          console.error('❌ [JiraService] Erro ao imprimir:', error);
+        }
+      })
+    );
+  }
+
+  /**
+   * Lista impressoras disponíveis no sistema
+   */
+  listarImpressoras(): Observable<any> {
+    console.log('🖨️ [JiraService] listarImpressoras iniciado');
+    console.log('🌐 URL:', `${this.apiUrl}/print/printers`);
+
+    return this.http.get<any>(`${this.apiUrl}/print/printers`).pipe(
+      tap({
+        next: (response) => {
+          console.log('📥 [JiraService] Impressoras:', response?.printers?.length || 0);
+        },
+        error: (error) => {
+          console.error('❌ [JiraService] Erro ao listar impressoras:', error);
+        }
+      })
+    );
+  }
+
+  /**
    * Gera espelhos para os cards informados.
    */
   gerarEspelhos(

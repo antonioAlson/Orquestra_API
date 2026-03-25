@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import jiraRoutes from './routes/jira.js';
+import printRoutes from './routes/print.js';
 import { ensureDatabaseCompatibility } from './config/database.js';
 
 // Carregar variáveis de ambiente
@@ -41,6 +42,7 @@ app.get('/', (req, res) => {
 // Rotas da API
 app.use('/api/auth', authRoutes);
 app.use('/api/jira', jiraRoutes);
+app.use('/api/print', printRoutes);
 
 // Rota 404
 app.use((req, res) => {

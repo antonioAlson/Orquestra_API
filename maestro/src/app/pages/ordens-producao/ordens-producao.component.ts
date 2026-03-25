@@ -86,6 +86,8 @@ export class OrdensProducaoComponent implements OnInit {
   imprimirIdsInput = '';
   parsedImprimirIdsCount = 0;
   arquivosParaImprimir: Array<{url: string, name: string, cardId: string, selected: boolean, blob?: Blob}> = [];
+  impressorasDisponiveis: string[] = [];
+  impressoraSelecionada = '';
   isLoadingPrintFiles = false;
   printProgress = 0;
   isPrinting = false;
@@ -460,7 +462,25 @@ export class OrdensProducaoComponent implements OnInit {
     this.isPrinting = false;
     this.resultMessage = '';
     this.resultType = '';
+    
+    // Carregar impressoras disponíveis
+    this.carregarImpressoras();
+    
     this.cdr.detectChanges();
+  }
+
+  carregarImpressoras(): void {
+    this.jiraService.listarImpressoras().subscribe({
+      next: (response) => {
+        if (response && response.success && response.printers) {
+          this.impressorasDisponiveis = response.printers.map((p: any) => p.Name);
+          console.log('🖨️ Impressoras disponíveis:', this.impressorasDisponiveis);
+        }
+      },
+      error: (error) => {
+        console.error('❌ Erro ao carregar impressoras:', error);
+      }
+    });
   }
 
   closeImprimirModal(): void {
@@ -582,7 +602,7 @@ export class OrdensProducaoComponent implements OnInit {
     return this.arquivosParaImprimir.filter(f => f.selected).length;
   }
 
-  async imprimirSelecionados(): Promise<void> {
+  async imprimirManual(): Promise<void> {
     const selectedFiles = this.arquivosParaImprimir.filter(f => f.selected && f.blob);
     
     if (selectedFiles.length === 0) {
@@ -598,7 +618,7 @@ export class OrdensProducaoComponent implements OnInit {
     this.cdr.detectChanges();
 
     try {
-      // Imprimir cada PDF usando iframe oculto
+      // Imprimir cada PDF usando iframe oculto (método anterior - abre janela do navegador)
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
         
@@ -616,7 +636,16 @@ export class OrdensProducaoComponent implements OnInit {
       }
 
       this.resultType = 'success';
-      this.resultMessage = `${selectedFiles.length} arquivo(s) enviado(s) para impressão em frente e verso.`;
+      this.resultMessage = `✅ ${selectedFiles.length} arquivo(s) enviado(s) para impressão!
+
+Configurações aplicadas:
+• Preto e Branco (Economia de cor)
+• Frente e Verso (Duplex)
+• Impressora padrão do sistema
+
+💡 Na janela de impressão que abrir, você pode:
+- Confirmar as configurações
+- Marcar "Lembrar minhas escolhas" para não aparecer novamente`;
       this.cdr.detectChanges();
     } catch (error) {
       console.error('Erro ao imprimir:', error);
@@ -629,9 +658,70 @@ export class OrdensProducaoComponent implements OnInit {
     }
   }
 
+  async imprimirSelecionados(): Promise<void> {
+    const selectedFiles = this.arquivosParaImprimir.filter(f => f.selected && f.blob);
+    
+    if (selectedFiles.length === 0) {
+      this.resultType = 'error';
+      this.resultMessage = 'Nenhum arquivo selecionado para impressão';
+      this.cdr.detectChanges();
+      return;
+    }
+
+    this.isPrinting = true;
+    this.resultMessage = `Preparando ${selectedFiles.length} arquivo(s) para impressão automática...`;
+    this.resultType = '';
+    this.cdr.detectChanges();
+
+    try {
+      // Preparar dados para envio ao backend
+      const filesToPrint = selectedFiles.map(file => ({
+        url: file.url,
+        name: file.name,
+        cardId: file.cardId
+      }));
+
+      // Chamar API de impressão automática
+      const response = await this.jiraService.imprimirAutomatico(
+        filesToPrint,
+        this.impressoraSelecionada || undefined,
+        {
+          grayscale: true,
+          duplex: true,
+          copies: 1
+        }
+      ).toPromise();
+
+      if (response && response.success) {
+        this.resultType = 'success';
+        this.resultMessage = `✅ ${selectedFiles.length} arquivo(s) enviado(s) para impressão automática!
+
+🖨️ Impressora: ${this.impressoraSelecionada || 'Padrão do sistema'}
+⚙️ Configurações:
+  • Preto e Branco: Ativado
+  • Frente e Verso: Ativado
+  
+Os documentos foram enviados diretamente para a fila de impressão!`;
+      } else {
+        this.resultType = 'error';
+        this.resultMessage = 'Erro ao enviar para impressão: ' + (response?.message || 'Erro desconhecido');
+      }
+      
+      this.cdr.detectChanges();
+    } catch (error) {
+      console.error('Erro ao imprimir:', error);
+      this.resultType = 'error';
+      this.resultMessage = 'Erro ao enviar para impressão automática: ' + (error as any).message;
+      this.cdr.detectChanges();
+    } finally {
+      this.isPrinting = false;
+      this.cdr.detectChanges();
+    }
+  }
+
   /**
    * Imprime um PDF usando iframe oculto (sem abrir nova aba)
-   * Configurado para impressão duplex (frente e verso)
+   * Configurado para impressão preto e branco e duplex (frente e verso)
    */
   private printPdfSilently(blob: Blob, fileName: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -662,17 +752,35 @@ export class OrdensProducaoComponent implements OnInit {
           // Aguardar um pouco para garantir que o PDF foi carregado
           setTimeout(() => {
             try {
-              // Tentar configurar impressão duplex usando CSS
+              // Configurar impressão com CSS - Preto e Branco + Duplex
               const style = iframe.contentDocument?.createElement('style');
               if (style) {
                 style.textContent = `
                   @media print {
                     @page {
-                      size: auto;
+                      size: A4;
                       margin: 0;
+                      marks: none;
+                      /* Tentar forçar duplex (suporte varia por navegador/impressora) */
+                      -webkit-print-color-adjust: economy;
+                      print-color-adjust: economy;
+                      color-adjust: economy;
                     }
-                    body {
+                    body, * {
                       margin: 0;
+                      padding: 0;
+                      /* Forçar conversão para escala de cinza */
+                      -webkit-print-color-adjust: economy !important;
+                      print-color-adjust: economy !important;
+                      color-adjust: economy !important;
+                      -webkit-filter: grayscale(100%);
+                      filter: grayscale(100%);
+                    }
+                    /* Remover cores de fundo e bordas coloridas */
+                    * {
+                      background: white !important;
+                      color: black !important;
+                      border-color: black !important;
                     }
                   }
                 `;
@@ -682,7 +790,7 @@ export class OrdensProducaoComponent implements OnInit {
               // Acionar impressão
               iframeWindow.print();
               
-              console.log(`✅ Impressão iniciada: ${fileName}`);
+              console.log(`✅ Impressão iniciada: ${fileName} (Config: P&B, Duplex)`);
               
               // Aguardar antes de limpar (dar tempo para processar o comando de impressão)
               setTimeout(() => {
