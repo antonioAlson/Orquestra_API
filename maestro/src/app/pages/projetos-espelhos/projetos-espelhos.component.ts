@@ -16,6 +16,12 @@ interface EspelhoItemDisplay {
   fullText: string;
 }
 
+interface ConsumoCampos {
+  c8: string;
+  c9: string;
+  c11: string;
+}
+
 @Component({
   selector: 'app-projetos-espelhos',
   standalone: true,
@@ -39,6 +45,9 @@ export class ProjetosEspelhosComponent implements OnInit {
   // Modal de quantidade de peças
   showQuantidadeModal = false;
   quantidadePecas: number | null = null;
+  consumo8C = '';
+  consumo9C = '';
+  consumo11C = '';
   pendingCardForQuantity: string | null = null;
   pendingFilesForQuantity: File[] = [];
 
@@ -46,6 +55,7 @@ export class ProjetosEspelhosComponent implements OnInit {
   private pendingCardIdForFileSelection: string | null = null;
   private selectedFilesByCardId = new Map<string, File[]>(); // Array de arquivos por card
   private quantidadeByCardId = new Map<string, number>(); // Quantidade de peças por card
+  private consumoByCardId = new Map<string, ConsumoCampos>(); // Campos de consumo por card
 
   private readonly requestTimeoutMs = 60000;
 
@@ -273,6 +283,10 @@ export class ProjetosEspelhosComponent implements OnInit {
     return String(item?.veiculo || 'Não informado').trim();
   }
 
+  isPendingCardTensylon(): boolean {
+    return String(this.pendingCardForQuantity || '').toUpperCase().startsWith('TENSYLON-');
+  }
+
   private buildFilesByCardPayload(ids: string[]): Record<string, File[]> {
     return ids.reduce((acc, id) => {
       const selectedFiles = this.selectedFilesByCardId.get(id);
@@ -293,6 +307,18 @@ export class ProjetosEspelhosComponent implements OnInit {
     }, {} as Record<string, number>);
   }
 
+  private buildConsumosByCardPayload(ids: string[]): Record<string, ConsumoCampos> {
+    return ids.reduce((acc, id) => {
+      const consumo = this.consumoByCardId.get(id) || { c8: '', c9: '', c11: '' };
+      acc[id] = {
+        c8: String(consumo.c8 || '').trim(),
+        c9: String(consumo.c9 || '').trim(),
+        c11: String(consumo.c11 || '').trim()
+      };
+      return acc;
+    }, {} as Record<string, ConsumoCampos>);
+  }
+
   private hasFileForAllSelectedCards(ids: string[]): boolean {
     return ids.every((id) => this.selectedFilesByCardId.has(id));
   }
@@ -305,6 +331,7 @@ export class ProjetosEspelhosComponent implements OnInit {
     this.markedCardIds.clear();
     this.selectedFilesByCardId.clear();
     this.quantidadeByCardId.clear();
+    this.consumoByCardId.clear();
 
     this.refreshView();
   }
@@ -355,6 +382,12 @@ export class ProjetosEspelhosComponent implements OnInit {
     this.pendingCardForQuantity = this.pendingCardIdForFileSelection;
     this.pendingFilesForQuantity = filesArray;
     this.quantidadePecas = null;
+
+    const consumoSalvo = this.consumoByCardId.get(this.pendingCardForQuantity) || { c8: '', c9: '', c11: '' };
+    this.consumo8C = consumoSalvo.c8;
+    this.consumo9C = consumoSalvo.c9;
+    this.consumo11C = consumoSalvo.c11;
+
     this.showQuantidadeModal = true;
     this.refreshView();
   }
@@ -370,6 +403,11 @@ export class ProjetosEspelhosComponent implements OnInit {
     // Armazenar arquivos e quantidade
     this.selectedFilesByCardId.set(cardId, files);
     this.quantidadeByCardId.set(cardId, this.quantidadePecas);
+    this.consumoByCardId.set(cardId, {
+      c8: String(this.consumo8C || '').trim(),
+      c9: String(this.consumo9C || '').trim(),
+      c11: String(this.consumo11C || '').trim()
+    });
     this.markedCardIds.add(cardId);
 
     // Limpar estados temporários
@@ -378,6 +416,9 @@ export class ProjetosEspelhosComponent implements OnInit {
     this.pendingCardForQuantity = null;
     this.pendingFilesForQuantity = [];
     this.quantidadePecas = null;
+    this.consumo8C = '';
+    this.consumo9C = '';
+    this.consumo11C = '';
 
     this.updateAssociationFeedbackMessage();
     this.refreshView();
@@ -389,6 +430,9 @@ export class ProjetosEspelhosComponent implements OnInit {
     this.pendingCardForQuantity = null;
     this.pendingFilesForQuantity = [];
     this.quantidadePecas = null;
+    this.consumo8C = '';
+    this.consumo9C = '';
+    this.consumo11C = '';
     this.refreshView();
   }
 
@@ -417,13 +461,14 @@ export class ProjetosEspelhosComponent implements OnInit {
 
     const filesByCard = this.buildFilesByCardPayload(ids);
     const quantidadesByCard = this.buildQuantidadesByCardPayload(ids);
+    const consumosByCard = this.buildConsumosByCardPayload(ids);
 
     this.isGeneratingEspelhos = true;
     this.generateMessage = 'Gerando espelhos e juntando com os PDFs selecionados...';
     this.generateMessageType = '';
     this.refreshView();
 
-    this.jiraService.gerarEspelhos(ids, null, filesByCard, true, quantidadesByCard)
+    this.jiraService.gerarEspelhos(ids, null, filesByCard, true, quantidadesByCard, consumosByCard)
       .pipe(
         take(1),
         finalize(() => {

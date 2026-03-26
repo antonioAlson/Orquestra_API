@@ -24,10 +24,8 @@
           type="button"
           class="board-tab"
           [class.active]="activeAguardandoTab === 'aramida'"
-          [class.disabled]="true"
           [attr.aria-selected]="activeAguardandoTab === 'aramida'"
-          [disabled]="true"
-          title="Categoria bloqueada temporariamente"
+          (click)="setAguardandoTab('aramida')"
         >
           Aramida
         </button>
@@ -191,6 +189,39 @@
           placeholder="Digite a quantidade"
           (keydown.enter)="confirmarQuantidade()"
           autofocus
+        />
+      </div>
+
+      <div class="form-group" *ngIf="!isPendingCardTensylon()">
+        <label for="consumo8c">Consumo 8C:</label>
+        <input
+          type="text"
+          id="consumo8c"
+          class="input-quantidade"
+          [(ngModel)]="consumo8C"
+          placeholder="Opcional"
+        />
+      </div>
+
+      <div class="form-group" *ngIf="!isPendingCardTensylon()">
+        <label for="consumo9c">Consumo 9C:</label>
+        <input
+          type="text"
+          id="consumo9c"
+          class="input-quantidade"
+          [(ngModel)]="consumo9C"
+          placeholder="Opcional"
+        />
+      </div>
+
+      <div class="form-group" *ngIf="!isPendingCardTensylon()">
+        <label for="consumo11c">Consumo 11C:</label>
+        <input
+          type="text"
+          id="consumo11c"
+          class="input-quantidade"
+          [(ngModel)]="consumo11C"
+          placeholder="Opcional"
         />
       </div>
     </div>

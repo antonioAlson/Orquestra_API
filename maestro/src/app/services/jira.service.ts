@@ -441,7 +441,8 @@ export class JiraService {
     arquivoProjeto?: File | null,
     arquivosPorId?: Record<string, File[]>,
     shouldDownload: boolean = true,
-    quantidadesPorId?: Record<string, number>
+    quantidadesPorId?: Record<string, number>,
+    consumosPorId?: Record<string, { c8: string; c9: string; c11: string }>
   ): Observable<any> {
     console.log('🧩 [JiraService] gerarEspelhos iniciado');
     console.log('📋 IDs:', ids);
@@ -465,8 +466,9 @@ export class JiraService {
       mergeMap((id) => {
         const filesForId = arquivosPorId?.[id] || (arquivoProjeto ? [arquivoProjeto] : null);
         const quantidade = quantidadesPorId?.[id] || 1;
+        const consumos = consumosPorId?.[id] || { c8: '', c9: '', c11: '' };
         const payload = filesForId
-          ? this.buildEspelhoFormData(id, filesForId, quantidade)
+          ? this.buildEspelhoFormData(id, filesForId, quantidade, consumos)
           : { ids: [id] };
 
         return this.http.post(`${this.apiUrl}/jira/gerar-espelhos`, payload, {
@@ -525,10 +527,18 @@ export class JiraService {
     );
   }
 
-  private buildEspelhoFormData(id: string, arquivosProjeto: File[], quantidade: number): FormData {
+  private buildEspelhoFormData(
+    id: string,
+    arquivosProjeto: File[],
+    quantidade: number,
+    consumos: { c8: string; c9: string; c11: string }
+  ): FormData {
     const formData = new FormData();
     formData.append('ids[]', id);
     formData.append('quantidade', quantidade.toString());
+    formData.append('consumo8c', String(consumos?.c8 || ''));
+    formData.append('consumo9c', String(consumos?.c9 || ''));
+    formData.append('consumo11c', String(consumos?.c11 || ''));
     
     // Adicionar múltiplos arquivos
     arquivosProjeto.forEach((file, index) => {

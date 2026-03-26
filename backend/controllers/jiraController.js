@@ -50,7 +50,11 @@ async function getUserJiraCredentials(userId) {
 }
 
 // Cria PDF idêntico ao template Word original
-async function criarEspelhoPdfDoCodigo(cardData, quantidadePecas = 1) {
+async function criarEspelhoPdfDoCodigo(
+  cardData,
+  quantidadePecas = 1,
+  consumoCampos = { c8: '', c9: '', c11: '' }
+) {
   try {
     console.log('📄 [1/7] Iniciando criação do PDF...');
     const pdfDoc = await PDFDocument.create();
@@ -139,25 +143,22 @@ async function criarEspelhoPdfDoCodigo(cardData, quantidadePecas = 1) {
   const cardIdentifier = `${cardData.id || ''} ${cardData.numeroOrdem || ''} ${cardData.numeroProjeto || ''}`;
   const isTensylonCard = /TENSYLON/i.test(cardIdentifier);
   const tensylonTitleSize = 21;
+  const tituloMaterial = isTensylonCard ? 'Tensylon' : 'Aramida';
+  const tituloMaterialWidth = fontBold.widthOfTextAtSize(tituloMaterial, tensylonTitleSize);
+  const tituloMaterialX = width / 2 - (tituloMaterialWidth / 2);
 
-  // Logo Tensylon
+  // Titulo do material (Tensylon ou Aramida)
   yPos -= 50;
-  if (isTensylonCard) {
-    const tensylonText = 'Tensylon';
-    const tensylonTextWidth = fontBold.widthOfTextAtSize(tensylonText, tensylonTitleSize);
-    const tensylonX = width / 2 - 40;
+  page.drawRectangle({
+    x: tituloMaterialX - 8,
+    y: yPos - 4,
+    width: tituloMaterialWidth + 16,
+    height: tensylonTitleSize + 7,
+    color: rgb(1, 0.84, 0.62)
+  });
 
-    page.drawRectangle({
-      x: tensylonX - 8,
-      y: yPos - 4,
-      width: tensylonTextWidth + 16,
-      height: tensylonTitleSize + 7,
-      color: rgb(1, 0.86, 0.64)
-    });
-  }
-
-  page.drawText('Tensylon', {
-    x: width / 2 - 40,
+  page.drawText(tituloMaterial, {
+    x: tituloMaterialX,
     y: yPos,
     size: tensylonTitleSize,
     font: fontBold,
@@ -179,8 +180,23 @@ async function criarEspelhoPdfDoCodigo(cardData, quantidadePecas = 1) {
     { label: 'Quantidade de peças:', value: String(quantidadePecas) },
     { label: 'OS:', value: cardData.numeroOrdem }
   ];
-  
-  fields.forEach(field => {
+
+  const drawCenteredText = (text, x, y, w, h, size, useBold = false, color = rgb(0, 0, 0)) => {
+    const fontToUse = useBold ? fontBold : font;
+    const value = String(text || '');
+    const textWidth = fontToUse.widthOfTextAtSize(value, size);
+    const textHeight = size;
+
+    page.drawText(value, {
+      x: x + (w - textWidth) / 2,
+      y: y + (h - textHeight) / 2 + 2,
+      size,
+      font: fontToUse,
+      color
+    });
+  };
+
+  for (const field of fields) {
     const labelText = String(field.label || '');
     const valueText = String(field.value || '');
 
@@ -200,9 +216,79 @@ async function criarEspelhoPdfDoCodigo(cardData, quantidadePecas = 1) {
       font: font,
       color: rgb(0, 0, 0)
     });
-    
+
     yPos -= lineHeight;
-  });
+
+    // Para Aramida, adiciona quadro de consumo abaixo de "OS:".
+    if (!isTensylonCard && labelText === 'OS:') {
+      const consumoLabelSize = labelSize;
+      const tableX = marginLeft;
+      const tableWidth = Math.min((width - (marginLeft * 2)) * 0.88, 520);
+      const colWidth = tableWidth / 3;
+      const headerHeight = 30;
+      const valueRowHeight = 26;
+      const labelY = yPos - 6;
+      const gapBetweenLabelAndTable = 10;
+      const tableTopY = labelY - gapBetweenLabelAndTable - headerHeight;
+      const consumoValues = [
+        String(consumoCampos?.c8 || ''),
+        String(consumoCampos?.c9 || ''),
+        String(consumoCampos?.c11 || '')
+      ];
+
+      page.drawText('Consumo (m²):', {
+        x: tableX,
+        y: labelY,
+        size: consumoLabelSize,
+        font: fontBold,
+        color: rgb(0, 0, 0)
+      });
+
+      // Linha de cabeçalho colorida
+      const headerColors = [
+        rgb(0.08, 0.08, 0.95),
+        rgb(0.1, 0.45, 0.13),
+        rgb(0.95, 0.05, 0.05)
+      ];
+      const headerTexts = ['8C', '9C', '11C'];
+
+      for (let i = 0; i < 3; i += 1) {
+        const x = tableX + (i * colWidth);
+        page.drawRectangle({
+          x,
+          y: tableTopY,
+          width: colWidth,
+          height: headerHeight,
+          color: headerColors[i],
+          borderColor: rgb(0, 0, 0),
+          borderWidth: 1
+        });
+
+        drawCenteredText(headerTexts[i], x, tableTopY, colWidth, headerHeight, 14, false, rgb(1, 1, 1));
+      }
+
+      // Linha de valor
+      const valueRowY = tableTopY - valueRowHeight;
+      for (let i = 0; i < 3; i += 1) {
+        const x = tableX + (i * colWidth);
+        page.drawRectangle({
+          x,
+          y: valueRowY,
+          width: colWidth,
+          height: valueRowHeight,
+          color: rgb(1, 1, 1),
+          borderColor: rgb(0, 0, 0),
+          borderWidth: 1
+        });
+      }
+
+      for (let i = 0; i < 3; i += 1) {
+        drawCenteredText(consumoValues[i], tableX + (i * colWidth), valueRowY, colWidth, valueRowHeight, 13, false, rgb(0, 0, 0));
+      }
+
+      yPos = valueRowY - 22;
+    }
+  }
   console.log('✅ [5/7] Campos do documento desenhados');
   
   // Gera e adiciona QR code centralizado
@@ -2063,6 +2149,11 @@ export const gerarEspelhos = async (req, res) => {
     let arquivosProjetoBuffers = [];
     const incluiuPdf = Array.isArray(req.files) && req.files.length > 0;
     const quantidadePecas = parseInt(req.body.quantidade) || 1; // Capturar quantidade de peças
+    const consumoCampos = {
+      c8: String(req.body?.consumo8c || '').trim(),
+      c9: String(req.body?.consumo9c || '').trim(),
+      c11: String(req.body?.consumo11c || '').trim()
+    };
     
     if (Array.isArray(req.files) && req.files.length > 0) {
       // Validar que todos são PDFs
@@ -2099,7 +2190,7 @@ export const gerarEspelhos = async (req, res) => {
     let downloadName = `${numeroOrdem}.pdf`;
 
     try {
-      generatedBuffer = await criarEspelhoPdfDoCodigo(cardData, quantidadePecas);
+      generatedBuffer = await criarEspelhoPdfDoCodigo(cardData, quantidadePecas, consumoCampos);
     } catch (pdfError) {
       console.error('❌ Erro ao gerar PDF:', pdfError.message);
       
