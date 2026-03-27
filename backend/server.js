@@ -107,3 +107,6 @@ process.on('uncaughtException', (err) => {
   console.error('❌ Uncaught Exception:', err);
   process.exit(1);
 });
+
+//Carrega a automação de atualização dos cards no banco
+require("./sync_cards_jira.cjs");
