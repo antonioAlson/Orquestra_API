@@ -4,8 +4,8 @@ const axios = require("axios");
 const cron = require("node-cron");
 const dayjs = require("dayjs");
 const { Pool } = require("pg");
+let rodando = false;
 
-// ================= BANCO (igual seu backend) =================
 const pool = new Pool({
   user: process.env.DB_USER || "postgres",
   host: process.env.DB_HOST || "localhost",
@@ -14,14 +14,13 @@ const pool = new Pool({
   port: process.env.DB_PORT || 5432,
 });
 
-// ================= JIRA =================
 const JIRA_URL = process.env.JIRA_URL;
 const EMAIL = process.env.JIRA_EMAIL;
 const API_TOKEN = process.env.JIRA_API_TOKEN;
 
-const JQL = `project = MANTA AND "fábrica de manta[dropdown]" = COMTEC AND status IN ("A Produzir", "Liberado Engenharia","Em Produção", "Produzido")`;
+const JQL = `project = MANTA AND status IN ("A Produzir", "Liberado Engenharia","Em Produção", "Produzido")`;
 
-// ================= HTTP =================
+
 const client = axios.create({
   baseURL: `${JIRA_URL}/rest/api/3`,
   auth: {
@@ -30,7 +29,6 @@ const client = axios.create({
   },
 });
 
-// ================= UPSERT =================
 async function salvarOuAtualizar(issue) {
   const query = `
     INSERT INTO maestro.jira_cards (
@@ -52,7 +50,7 @@ async function salvarOuAtualizar(issue) {
       situacao = EXCLUDED.situacao,
       veiculo = EXCLUDED.veiculo,
       previsao = EXCLUDED.previsao,
-      updated_at = NOW();
+      last_updated_at = NOW();
   `;
 
   const values = [
@@ -72,7 +70,6 @@ async function salvarOuAtualizar(issue) {
   }
 }
 
-// ================= BUSCA =================
 async function buscarIssues(jql, nextPageToken = null) {
   const params = {
     jql,
@@ -88,7 +85,6 @@ async function buscarIssues(jql, nextPageToken = null) {
   return response.data;
 }
 
-// ================= PROCESSAMENTO =================
 async function processar() {
   let nextPage = null;
   let total = 0;
@@ -150,10 +146,17 @@ async function processar() {
   }
 }
 
-// ================= CRON =================
 cron.schedule("*/5 * * * *", async () => {
+  if (rodando) {
+    console.log("⏳ Ainda em execução, pulando...");
+    return;
+  }
+
+  rodando = true;
+
   console.log("\n⏰ Rodando sincronização...");
   await processar();
+  rodando = false;
 });
 
 // execução inicial
