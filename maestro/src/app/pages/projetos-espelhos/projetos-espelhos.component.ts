@@ -9,6 +9,7 @@ interface EspelhoItem {
   resumo: string;
   veiculo: string;
   previsao: string;
+  numeroProjeto: string;
 }
 
 interface EspelhoItemDisplay {
@@ -45,6 +46,7 @@ export class ProjetosEspelhosComponent implements OnInit {
   // Modal de quantidade de peças
   showQuantidadeModal = false;
   quantidadePecas: number | null = null;
+  quantidadeTampas: number | null = null;
   consumo8C = '';
   consumo9C = '';
   consumo11C = '';
@@ -55,6 +57,7 @@ export class ProjetosEspelhosComponent implements OnInit {
   private pendingCardIdForFileSelection: string | null = null;
   private selectedFilesByCardId = new Map<string, File[]>(); // Array de arquivos por card
   private quantidadeByCardId = new Map<string, number>(); // Quantidade de peças por card
+  private quantidadeTampasByCardId = new Map<string, number>(); // Quantidade de tampas por card (contra capa)
   private consumoByCardId = new Map<string, ConsumoCampos>(); // Campos de consumo por card
 
   private readonly requestTimeoutMs = 60000;
@@ -101,7 +104,8 @@ export class ProjetosEspelhosComponent implements OnInit {
               id: (issue?.key || '').toString().trim(),
               resumo: (issue?.resumo || '').toString().trim() || '-',
               veiculo: (issue?.veiculo || '').toString().trim() || '-',
-              previsao: (issue?.previsao || '').toString().trim() || '-'
+              previsao: (issue?.previsao || '').toString().trim() || '-',
+              numeroProjeto: (issue?.numeroProjeto || '').toString().trim() || '-'
             }));
 
           this.refreshView();
@@ -140,13 +144,15 @@ export class ProjetosEspelhosComponent implements OnInit {
     const resumoSemOs = this.removerOsDoResumo(item.resumo, osNumber);
     const resumo = this.abreviarResumo(resumoSemOs);
     const veiculo = this.abreviarVeiculo(item.veiculo);
+    const numeroProjeto = String(item.numeroProjeto || '').trim() || '-';
+    const projetoLabel = numeroProjeto !== '-' ? `Projeto: ${numeroProjeto}` : '-';
 
-    const text = [osNumber, veiculo, resumo, item.previsao]
+    const text = [osNumber, veiculo, resumo, projetoLabel]
       .map((value) => String(value || '').trim())
       .filter((value) => value.length > 0 && value !== '-')
       .join(' - ');
 
-    const fullText = [osNumber, resumoSemOs, item.veiculo, item.previsao]
+    const fullText = [osNumber, resumoSemOs, item.veiculo, projetoLabel]
       .map((value) => String(value || '').trim())
       .filter((value) => value.length > 0 && value !== '-')
       .join(' - ');
@@ -307,6 +313,16 @@ export class ProjetosEspelhosComponent implements OnInit {
     }, {} as Record<string, number>);
   }
 
+  private buildQuantidadesTampasByCardPayload(ids: string[]): Record<string, number> {
+    return ids.reduce((acc, id) => {
+      const quantidade = this.quantidadeTampasByCardId.get(id);
+      if (quantidade) {
+        acc[id] = quantidade;
+      }
+      return acc;
+    }, {} as Record<string, number>);
+  }
+
   private buildConsumosByCardPayload(ids: string[]): Record<string, ConsumoCampos> {
     return ids.reduce((acc, id) => {
       const consumo = this.consumoByCardId.get(id) || { c8: '', c9: '', c11: '' };
@@ -331,6 +347,7 @@ export class ProjetosEspelhosComponent implements OnInit {
     this.markedCardIds.clear();
     this.selectedFilesByCardId.clear();
     this.quantidadeByCardId.clear();
+    this.quantidadeTampasByCardId.clear();
     this.consumoByCardId.clear();
 
     this.refreshView();
@@ -382,6 +399,7 @@ export class ProjetosEspelhosComponent implements OnInit {
     this.pendingCardForQuantity = this.pendingCardIdForFileSelection;
     this.pendingFilesForQuantity = filesArray;
     this.quantidadePecas = null;
+    this.quantidadeTampas = this.quantidadeTampasByCardId.get(this.pendingCardForQuantity) ?? null;
 
     const consumoSalvo = this.consumoByCardId.get(this.pendingCardForQuantity) || { c8: '', c9: '', c11: '' };
     this.consumo8C = consumoSalvo.c8;
@@ -397,12 +415,24 @@ export class ProjetosEspelhosComponent implements OnInit {
       return;
     }
 
+    if (!this.isPendingCardTensylon() && (!this.quantidadeTampas || this.quantidadeTampas < 1)) {
+      this.generateMessageType = 'error';
+      this.generateMessage = 'Informe a quantidade de tampas para a contra capa.';
+      this.refreshView();
+      return;
+    }
+
     const cardId = this.pendingCardForQuantity;
     const files = this.pendingFilesForQuantity;
 
     // Armazenar arquivos e quantidade
     this.selectedFilesByCardId.set(cardId, files);
     this.quantidadeByCardId.set(cardId, this.quantidadePecas);
+    if (!this.isPendingCardTensylon() && this.quantidadeTampas && this.quantidadeTampas > 0) {
+      this.quantidadeTampasByCardId.set(cardId, this.quantidadeTampas);
+    } else {
+      this.quantidadeTampasByCardId.delete(cardId);
+    }
     this.consumoByCardId.set(cardId, {
       c8: String(this.consumo8C || '').trim(),
       c9: String(this.consumo9C || '').trim(),
@@ -416,6 +446,7 @@ export class ProjetosEspelhosComponent implements OnInit {
     this.pendingCardForQuantity = null;
     this.pendingFilesForQuantity = [];
     this.quantidadePecas = null;
+    this.quantidadeTampas = null;
     this.consumo8C = '';
     this.consumo9C = '';
     this.consumo11C = '';
@@ -430,6 +461,7 @@ export class ProjetosEspelhosComponent implements OnInit {
     this.pendingCardForQuantity = null;
     this.pendingFilesForQuantity = [];
     this.quantidadePecas = null;
+    this.quantidadeTampas = null;
     this.consumo8C = '';
     this.consumo9C = '';
     this.consumo11C = '';
@@ -461,6 +493,7 @@ export class ProjetosEspelhosComponent implements OnInit {
 
     const filesByCard = this.buildFilesByCardPayload(ids);
     const quantidadesByCard = this.buildQuantidadesByCardPayload(ids);
+    const quantidadesTampasByCard = this.buildQuantidadesTampasByCardPayload(ids);
     const consumosByCard = this.buildConsumosByCardPayload(ids);
 
     this.isGeneratingEspelhos = true;
@@ -468,7 +501,7 @@ export class ProjetosEspelhosComponent implements OnInit {
     this.generateMessageType = '';
     this.refreshView();
 
-    this.jiraService.gerarEspelhos(ids, null, filesByCard, true, quantidadesByCard, consumosByCard)
+    this.jiraService.gerarEspelhos(ids, null, filesByCard, true, quantidadesByCard, quantidadesTampasByCard, consumosByCard)
       .pipe(
         take(1),
         finalize(() => {
