@@ -1,43 +1,43 @@
 .cadastro-projetos-container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  background-color: #f5f5f5;
-  overflow: hidden;
+  padding: 0.75rem 2rem 2rem 2rem;
+  background: #f3f4f6;
+  min-height: 100vh;
 
-  .header {
-    background-color: #2c3e50;
-    color: white;
-    padding: 1.5rem 2rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  .cadastro-header {
+    margin-bottom: 0.85rem;
+  }
 
-    .header-content {
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    min-height: 46px;
+
+    h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #6b7280;
+    }
+
+    .header-actions {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      max-width: 1400px;
-      margin: 0 auto;
+      gap: 1rem;
+    }
 
-      h1 {
-        margin: 0;
-        font-size: 1.8rem;
-        font-weight: 600;
-      }
-
-      .header-brand {
-        height: 40px;
-        object-fit: contain;
-      }
+    .header-brand {
+      height: 52px;
+      width: auto;
+      object-fit: contain;
+      display: block;
+      align-self: center;
     }
   }
 
   .content {
-    flex: 1;
-    padding: 2rem;
-    overflow-y: auto;
-    max-width: 1400px;
-    margin: 0 auto;
-    width: 100%;
+    margin: 0;
 
     .toolbar {
       display: flex;
@@ -47,36 +47,52 @@
       gap: 1rem;
       flex-wrap: wrap;
 
-      .search-box {
-        flex: 1;
+      .search-container {
+        position: relative;
         display: flex;
-        gap: 0.5rem;
         align-items: center;
+        flex-shrink: 0;
+
+        .search-icon {
+          position: absolute;
+          left: 12px;
+          color: #64748b;
+          pointer-events: none;
+        }
 
         .search-input {
-          flex: 1;
-          padding: 0.75rem 1rem;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-size: 1rem;
-          transition: border-color 0.3s;
+          padding: 0.5rem 0.75rem 0.5rem 2.5rem;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          font-size: 0.875rem;
+          width: 400px;
+          transition: all 0.2s ease;
+          background-color: white;
 
           &:focus {
             outline: none;
-            border-color: #3498db;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
           }
         }
+      }
+
+      .toolbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
       }
     }
 
     .btn {
-      padding: 0.75rem 1.5rem;
-      border: none;
-      border-radius: 4px;
-      font-size: 0.95rem;
-      font-weight: 500;
+      height: 2.5rem;
+      border-radius: 0.7rem;
+      border: 1px solid #d1d5db;
+      padding: 0 1rem;
+      font-size: 0.88rem;
+      font-weight: 600;
       cursor: pointer;
-      transition: all 0.3s;
+      transition: all 0.2s ease;
       white-space: nowrap;
 
       &:disabled {
@@ -85,29 +101,35 @@
       }
 
       &.btn-primary {
-        background-color: #3498db;
+        background: #3b82f6;
         color: white;
+        border-color: #3b82f6;
 
         &:hover:not(:disabled) {
-          background-color: #2980b9;
+          background: #2563eb;
+          border-color: #2563eb;
         }
       }
 
       &.btn-secondary {
-        background-color: #95a5a6;
+        background: #6b7280;
         color: white;
+        border-color: #6b7280;
 
         &:hover:not(:disabled) {
-          background-color: #7f8c8d;
+          background: #4b5563;
+          border-color: #4b5563;
         }
       }
 
       &.btn-stats {
-        background-color: #9b59b6;
-        color: white;
+        background: #ffffff;
+        color: #374151;
+        border-color: #d1d5db;
 
         &:hover {
-          background-color: #8e44ad;
+          background: #f3f4f6;
+          border-color: #9ca3af;
         }
       }
 
