@@ -2893,3 +2893,36 @@ export const obterMarcasUnicas = async (req, res) => {
     });
   }
 };
+
+/**
+ * Reprograma datas Comtec automaticamente (próximo dia útil)
+ */
+export const reprogramarDatasComtec = async (req, res) => {
+  console.log('🎯 ============================================');
+  console.log('🎯 ENDPOINT /reprogramar-datas-comtec INICIADO');
+  console.log('🎯 ============================================');
+
+  try {
+    console.log('🚀 Iniciando reprogramação automática de datas Comtec...');
+
+    // Import dinâmico da função processar
+    const { processar } = await import('../cron_jobs/update_comtec_cards.cjs');
+
+    // Chamar a função processar do script update_comtec_cards.cjs
+    await processar();
+
+    console.log('✅ Reprogramação de datas Comtec concluída com sucesso');
+
+    return res.status(200).json({
+      success: true,
+      message: 'Datas Comtec reprogramadas com sucesso'
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao reprogramar datas Comtec:', error);
+    return res.status(500).json({
+      success: false,
+      message: `Erro ao reprogramar datas Comtec: ${error.message}`
+    });
+  }
+};

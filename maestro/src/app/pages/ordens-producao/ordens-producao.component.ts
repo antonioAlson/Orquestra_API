@@ -382,6 +382,8 @@ export class OrdensProducaoComponent implements OnInit {
       this.openPrintModal();
     } else if (routineName === 'alterar-datas') {
       this.openAlterarDatasModal();
+    } else if (routineName === 'reprogramar-contec') {
+      this.reprogramarDatasComtec();
     } else {
       // TODO: Implementar outras rotinas
       alert(`Rotina "${routineName}" em desenvolvimento`);
@@ -1272,5 +1274,61 @@ export class OrdensProducaoComponent implements OnInit {
           this.scheduleResetAfterFeedback(false);
         }
       });
+  }
+
+  reprogramarDatasComtec(): void {
+    console.log('🚀 Iniciando reprogramação automática de datas Comtec...');
+
+    if (confirm('Tem certeza que deseja reprogramar automaticamente as datas Comtec?\n\nIsso irá buscar todas as issues Comtec válidas e atualizar suas datas de previsão para o próximo dia útil.')) {
+      this.isProcessing = true;
+      this.resultMessage = 'Reprogramando datas Comtec... Aguarde.';
+      this.resultType = '';
+
+      const operationTimeoutMs = 120000; // 2 minutos para operação Comtec
+      this.startProcessingGuard(operationTimeoutMs + 15000);
+
+      this.jiraService.reprogramarDatasComtec()
+        .pipe(
+          timeout(operationTimeoutMs),
+          take(1),
+          finalize(() => {
+            console.log('🏁 Finalize executado - parando loading');
+            this.isProcessing = false;
+            this.clearProcessingGuard();
+            this.refreshView();
+          })
+        )
+        .subscribe({
+          next: (response) => {
+            console.log('✅ Resposta completa recebida:', JSON.stringify(response, null, 2));
+
+            if (response?.success) {
+              this.resultType = 'success';
+              this.resultMessage = response.message || 'Datas Comtec reprogramadas com sucesso.';
+            } else {
+              this.resultType = 'error';
+              this.resultMessage = response?.message || 'Erro ao reprogramar datas Comtec';
+            }
+
+            this.showReprogramResultPopup(this.resultType || 'error', this.resultMessage);
+            this.scheduleResetAfterFeedback(true);
+          },
+          error: (error) => {
+            console.error('❌ Erro capturado:', error);
+            this.resultType = 'error';
+
+            if (error?.name === 'TimeoutError') {
+              this.resultMessage = `Tempo limite excedido (${operationTimeoutMs / 1000}s). A operação pode ainda estar em andamento no servidor.`;
+            } else if (error?.status === 0) {
+              this.resultMessage = 'Não foi possível conectar ao servidor. Verifique sua conexão.';
+            } else {
+              this.resultMessage = error.error?.message || error?.message || 'Erro ao conectar com o servidor';
+            }
+
+            this.showReprogramResultPopup('error', this.resultMessage);
+            this.scheduleResetAfterFeedback(false);
+          }
+        });
+    }
   }
 }

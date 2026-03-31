@@ -4,6 +4,7 @@ import {
   getJiraIssues, 
   getContecIssues, 
   reprogramarEmMassa,
+  reprogramarDatasComtec,
   atualizarDatasIndividuais,
   buscarArquivosPorIds,
   downloadArquivo,
@@ -34,6 +35,9 @@ router.get('/contec', authenticate, getContecIssues);
 
 // Reprogramar múltiplas issues em massa
 router.post('/reprogramar-massa', authenticate, reprogramarEmMassa);
+
+// Reprogramar datas Comtec automaticamente
+router.post('/reprogramar-datas-comtec', authenticate, reprogramarDatasComtec);
 
 // Atualizar datas individuais (cada issue com data diferente)
 router.post('/atualizar-datas-individuais', authenticate, atualizarDatasIndividuais);

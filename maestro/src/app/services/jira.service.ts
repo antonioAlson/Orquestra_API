@@ -291,6 +291,32 @@ export class JiraService {
   }
 
   /**
+   * Reprograma datas Comtec automaticamente (próximo dia útil)
+   */
+  reprogramarDatasComtec(): Observable<any> {
+    console.log('🚀 [JiraService] reprogramarDatasComtec iniciado');
+    console.log('🔑 Token disponível:', !!this.getAuthToken());
+    console.log('🌐 URL:', `${this.apiUrl}/jira/reprogramar-datas-comtec`);
+
+    return this.http.post<any>(`${this.apiUrl}/jira/reprogramar-datas-comtec`, {}).pipe(
+      tap({
+        next: (response) => {
+          console.log('📥 [JiraService] Resposta recebida:', response);
+          console.log('📊 [JiraService] Status:', response?.success ? 'Sucesso' : 'Falha');
+        },
+        error: (error) => {
+          console.error('❌ [JiraService] Erro na requisição:', error);
+          console.error('❌ [JiraService] Status code:', error?.status);
+          console.error('❌ [JiraService] Error message:', error?.message);
+        },
+        complete: () => {
+          console.log('✅ [JiraService] Observable completado com sucesso');
+        }
+      })
+    );
+  }
+
+  /**
    * Busca issues do Jira
    * @param semData - Se true, retorna apenas issues sem data de previsão
    */

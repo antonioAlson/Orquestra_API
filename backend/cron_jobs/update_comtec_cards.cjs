@@ -190,8 +190,8 @@ async function processar() {
 
         const novaData = proximoDiaUtil();
 
-        await atualizarPrevisao(key, novaData);
-
+        //await atualizarPrevisao(key, novaData);
+        console.log(key," ", tipo, " previsão atualizada para", novaData);
         total++;
       }
 
@@ -235,3 +235,5 @@ if (isDev) {
   const msg = `Script Comtec Datas Ambiente: ${process.env.NODE_ENV} | rodar? ${isDev}`;
   console.log(msg);
 }
+
+module.exports = { processar };
