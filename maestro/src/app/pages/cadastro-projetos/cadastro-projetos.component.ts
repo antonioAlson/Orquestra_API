@@ -54,6 +54,11 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
     quantidade_placas_8c: 0,
     quantidade_placas_9c: 0,
     quantidade_placas_11c: 0,
+    flag_corte: false,
+    flag_mapa_kit: false,
+    flag_relatorio_encaixe: false,
+    flag_etiquetagem: false,
+    flag_modelo_pastas: false,
     roof_config: '',
     total_parts_qty: 0,
     lid_parts_qty: 0
@@ -216,6 +221,11 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
       quantidade_placas_8c: 0,
       quantidade_placas_9c: 0,
       quantidade_placas_11c: 0,
+      flag_corte: false,
+      flag_mapa_kit: false,
+      flag_relatorio_encaixe: false,
+      flag_etiquetagem: false,
+      flag_modelo_pastas: false,
       roof_config: '',
       total_parts_qty: 0,
       lid_parts_qty: 0

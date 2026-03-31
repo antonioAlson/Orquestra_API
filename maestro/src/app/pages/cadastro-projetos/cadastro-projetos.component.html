@@ -276,7 +276,7 @@
     <div class="modal-body" *ngIf="abaAtiva === 'especificacao'">
       <form class="cadastro-form">
         <div class="specs-title-line">
-          <span>Metro Linear</span>
+          <span>Placas</span>
         </div>
 
         <div class="form-row specs-row">
@@ -309,10 +309,6 @@
               name="spec_11c"
               placeholder="Informe 11C">
           </div>
-        </div>
-
-        <div class="specs-title-line">
-          <span>Metro Quadrado (m²)</span>
         </div>
 
         <div class="form-row specs-row">
@@ -356,10 +352,6 @@
           </div>
         </div>
 
-        <div class="specs-title-line">
-          <span>Quantidade de Placas</span>
-        </div>
-
         <div class="form-row specs-row">
           <div class="form-group">
             <label for="quantidade_placas_8c">8C (un)</label>
@@ -399,6 +391,57 @@
               step="1"
               placeholder="0">
           </div>
+        </div>
+
+        <div class="specs-title-line">
+          <span>Projeto</span>
+        </div>
+
+        <div class="spec-options-row">
+          <label class="spec-option-item" for="flag_corte">
+            <input
+              type="checkbox"
+              id="flag_corte"
+              [(ngModel)]="novoProjeto.flag_corte"
+              name="flag_corte">
+            <span>Corte</span>
+          </label>
+
+          <label class="spec-option-item" for="flag_mapa_kit">
+            <input
+              type="checkbox"
+              id="flag_mapa_kit"
+              [(ngModel)]="novoProjeto.flag_mapa_kit"
+              name="flag_mapa_kit">
+            <span>Mapa do kit</span>
+          </label>
+
+          <label class="spec-option-item" for="flag_relatorio_encaixe">
+            <input
+              type="checkbox"
+              id="flag_relatorio_encaixe"
+              [(ngModel)]="novoProjeto.flag_relatorio_encaixe"
+              name="flag_relatorio_encaixe">
+            <span>Relatorio Encaixe</span>
+          </label>
+
+          <label class="spec-option-item" for="flag_etiquetagem">
+            <input
+              type="checkbox"
+              id="flag_etiquetagem"
+              [(ngModel)]="novoProjeto.flag_etiquetagem"
+              name="flag_etiquetagem">
+            <span>Etiquetagem</span>
+          </label>
+
+          <label class="spec-option-item" for="flag_modelo_pastas">
+            <input
+              type="checkbox"
+              id="flag_modelo_pastas"
+              [(ngModel)]="novoProjeto.flag_modelo_pastas"
+              name="flag_modelo_pastas">
+            <span>Modelo pastas</span>
+          </label>
         </div>
       </form>
     </div>
