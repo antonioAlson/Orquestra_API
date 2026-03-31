@@ -207,7 +207,7 @@
               [(ngModel)]="novoProjeto.material_type" 
               name="material_type"
               required>
-              <option value="" disabled selected>Selecione o tipo de material</option>
+              <option value="" disabled>Selecione o tipo de material</option>
               <option *ngFor="let tipo of tiposMaterial" [value]="tipo">{{ tipo }}</option>
             </select>
           </div>
@@ -221,7 +221,7 @@
               [(ngModel)]="novoProjeto.brand" 
               name="brand"
               required>
-              <option value="" disabled selected>Selecione a marca</option>
+              <option value="" disabled>Selecione a marca</option>
               <option *ngFor="let marca of marcas" [value]="marca">{{ marca }}</option>
             </select>
           </div>

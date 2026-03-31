@@ -320,10 +320,19 @@ export class JiraService {
    * Busca issues do Jira
    * @param semData - Se true, retorna apenas issues sem data de previsão
    */
-  getJiraIssues(semData: boolean = false): Observable<any> {
+  getJiraIssues(semData: boolean = false, options?: { mantaBoard?: string }): Observable<any> {
     console.log('🔍 [JiraService] getJiraIssues iniciado');
     console.log('📅 Filtro sem data:', semData);
-    const url = `${this.apiUrl}/jira/issues${semData ? '?semData=true' : ''}`;
+    const queryParams = new URLSearchParams();
+    if (semData) {
+      queryParams.append('semData', 'true');
+    }
+    if (options?.mantaBoard) {
+      queryParams.append('mantaBoard', options.mantaBoard);
+    }
+
+    const query = queryParams.toString();
+    const url = `${this.apiUrl}/jira/issues${query ? `?${query}` : ''}`;
     console.log('🌐 URL:', url);
 
     return this.http.get<any>(url).pipe(

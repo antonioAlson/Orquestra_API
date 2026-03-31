@@ -80,7 +80,7 @@ export class ProjetosEspelhosComponent implements OnInit {
     this.loadErrorAguardandoProjeto = '';
     this.refreshView();
 
-    this.jiraService.getJiraIssues(false)
+    this.jiraService.getJiraIssues(false, { mantaBoard: 'CARBON OPACO' })
       .pipe(
         timeout(this.requestTimeoutMs),
         take(1),

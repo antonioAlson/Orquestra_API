@@ -300,6 +300,20 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
       return String(value);
     };
 
+    const normalizeMaterialType = (value: any): string => {
+      const raw = toStringValue(value).trim();
+      if (!raw) {
+        return '';
+      }
+
+      const upper = raw.toUpperCase();
+      if (upper === 'MANTA' || upper === 'TENSYLON') {
+        return upper;
+      }
+
+      return raw;
+    };
+
     const toNullableNumber = (value: any): number | null => {
       if (value === null || value === undefined || value === '') {
         return null;
@@ -320,7 +334,7 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
 
     return {
       project: toStringValue(project.project),
-      material_type: toStringValue(project.material_type),
+      material_type: normalizeMaterialType(project.material_type),
       brand: toStringValue(project.brand),
       model: toStringValue(project.model),
       spec_8c: toStringValue(linearMeters['8C']),
@@ -356,7 +370,13 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
     this.jiraService.obterProjectById(projectId).subscribe({
       next: (response) => {
         this.ngZone.run(() => {
-          this.novoProjeto = this.mapProjectToForm(response.data);
+          const projetoMapeado = this.mapProjectToForm(response.data);
+
+          if (projetoMapeado.material_type && !this.tiposMaterial.includes(projetoMapeado.material_type)) {
+            this.tiposMaterial = [...this.tiposMaterial, projetoMapeado.material_type];
+          }
+
+          this.novoProjeto = projetoMapeado;
           this.projetoEmEdicaoId = projectId;
           this.modoModal = modo;
           this.abaAtiva = 'geral';

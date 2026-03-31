@@ -896,9 +896,17 @@ export const getJiraIssues = async (req, res) => {
 
     // Verificar se deve filtrar apenas issues sem data de previsão
     const semData = req.query.semData === 'true';
+    const mantaBoard = String(req.query.mantaBoard || '').trim();
 
     // Filtro JQL base - incluindo "Recebido Não liberado" para TENSYLON
-    let jql = '(project = MANTA AND status IN ("A Produzir", "Liberado Engenharia")) OR (project = TENSYLON AND status IN ("A Produzir", "Liberado Engenharia", "Aguardando Acabamento", "Aguardando Autoclave", "Aguardando Corte", "Aguardando montagem", "🔴RECEBIDO NÃO LIBERADO"))';
+    const jqlMantaBase = '(project = MANTA AND status IN ("A Produzir", "Liberado Engenharia"))';
+    const jqlTensylonBase = '(project = TENSYLON AND status IN ("A Produzir", "Liberado Engenharia", "Aguardando Acabamento", "Aguardando Autoclave", "Aguardando Corte", "Aguardando montagem", "🔴RECEBIDO NÃO LIBERADO"))';
+    const escapedMantaBoard = mantaBoard.replace(/"/g, '\\"');
+    const jqlMantaComBoard = mantaBoard
+      ? `(project = MANTA AND "fábrica de manta[dropdown]" = "${escapedMantaBoard}" AND status IN ("A Produzir", "Liberado Engenharia"))`
+      : jqlMantaBase;
+
+    let jql = `${jqlMantaComBoard} OR ${jqlTensylonBase}`;
     
     // Adicionar filtro de data vazia se solicitado
     if (semData) {
