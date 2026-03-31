@@ -15,6 +15,11 @@ import {
   obterProjetoEspelho,
   obterEstatisticasProjetos,
   listarProjects,
+  obterProjectById,
+  criarProject,
+  atualizarProject,
+  clonarProject,
+  excluirProject,
   obterMarcasUnicas
 } from '../controllers/jiraController.js';
 import { authenticate } from '../middleware/auth.js';
@@ -72,5 +77,20 @@ router.get('/projects/brands', authenticate, obterMarcasUnicas);
 
 // Listar projetos da tabela maestro.project
 router.get('/projects', authenticate, listarProjects);
+
+// Obter detalhes de um projeto
+router.get('/projects/:id', authenticate, obterProjectById);
+
+// Criar novo projeto na tabela maestro.project
+router.post('/projects', authenticate, criarProject);
+
+// Atualizar projeto
+router.put('/projects/:id', authenticate, atualizarProject);
+
+// Clonar projeto
+router.post('/projects/:id/clone', authenticate, clonarProject);
+
+// Excluir projeto
+router.delete('/projects/:id', authenticate, excluirProject);
 
 export default router;

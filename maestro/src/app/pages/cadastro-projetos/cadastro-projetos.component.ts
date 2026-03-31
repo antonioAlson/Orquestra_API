@@ -1,8 +1,34 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, NgZone, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { JiraService, Project, ProjectsResponse } from '../../services/jira.service';
+import { JiraService, Project, ProjectDetail, ProjectsResponse } from '../../services/jira.service';
 import { Subscription } from 'rxjs';
+
+type NovoProjetoForm = {
+  project: string;
+  material_type: string;
+  brand: string;
+  model: string;
+  spec_8c: string;
+  spec_9c: string;
+  spec_11c: string;
+  metro_quadrado_8c: number | null;
+  metro_quadrado_9c: number | null;
+  metro_quadrado_11c: number | null;
+  quantidade_placas_8c: number;
+  quantidade_placas_9c: number;
+  quantidade_placas_11c: number;
+  flag_corte: boolean;
+  flag_mapa_kit: boolean;
+  flag_relatorio_encaixe: boolean;
+  flag_etiquetagem: boolean;
+  flag_modelo_pastas: boolean;
+  roof_config: string;
+  total_parts_qty: number;
+  lid_parts_qty: number;
+};
+
+type ModalModo = 'novo' | 'visualizar' | 'editar' | 'clonar';
 
 @Component({
   selector: 'app-cadastro-projetos',
@@ -33,6 +59,23 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
   // Modal de novo cadastro
   mostrarModal: boolean = false;
   salvandoProjeto: boolean = false;
+  modoModal: ModalModo = 'novo';
+  projetoEmEdicaoId: number | null = null;
+  carregandoProjetoDetalhe: boolean = false;
+  showCadastroPopup: boolean = false;
+  cadastroPopupType: 'success' | 'error' | '' = '';
+  cadastroPopupMessage: string = '';
+  showConfirmacaoPopup: boolean = false;
+  confirmacaoPopupTitulo: string = '';
+  confirmacaoPopupMensagem: string = '';
+  confirmacaoPopupBotao: string = 'Confirmar';
+  confirmacaoAcaoPendente: 'salvar' | 'excluir' | '' = '';
+  projetoPendenteExclusao: Project | null = null;
+
+  // Menu de apoio por linha
+  mostrarMenuApoio: boolean = false;
+  menuApoioPosicao = { x: 0, y: 0 };
+  projetoSelecionadoMenu: Project | null = null;
   
   // Listas para campos do formulário
   tiposMaterial: string[] = ['MANTA', 'TENSYLON'];
@@ -40,7 +83,7 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
   private projetosSubscription?: Subscription;
   
   // Formulário de novo projeto
-  novoProjeto = {
+  novoProjeto: NovoProjetoForm = {
     project: '',
     material_type: '',
     brand: '',
@@ -48,9 +91,9 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
     spec_8c: '',
     spec_9c: '',
     spec_11c: '',
-    metro_quadrado_8c: 0,
-    metro_quadrado_9c: 0,
-    metro_quadrado_11c: 0,
+    metro_quadrado_8c: null,
+    metro_quadrado_9c: null,
+    metro_quadrado_11c: null,
     quantidade_placas_8c: 0,
     quantidade_placas_9c: 0,
     quantidade_placas_11c: 0,
@@ -76,6 +119,344 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
     this.carregarMarcas();
   }
 
+  @HostListener('document:click')
+  onDocumentClick(): void {
+    if (this.mostrarMenuApoio) {
+      this.fecharMenuApoio();
+    }
+  }
+
+  getTituloModal(): string {
+    if (this.modoModal === 'visualizar') {
+      return 'Visualizar Projeto';
+    }
+
+    if (this.modoModal === 'editar') {
+      return 'Editar Projeto';
+    }
+
+    if (this.modoModal === 'clonar') {
+      return 'Clonar Projeto';
+    }
+
+    return 'Novo Cadastro de Projeto';
+  }
+
+  getTituloConfirmacao(): string {
+    if (this.modoModal === 'editar') {
+      return 'Confirma atualização';
+    }
+
+    if (this.modoModal === 'clonar') {
+      return 'Confirma clonagem';
+    }
+
+    return 'Confirma cadastro';
+  }
+
+  getMensagemConfirmacaoSalvar(): string {
+    if (this.modoModal === 'editar') {
+      return `Deseja atualizar o projeto ${this.novoProjeto.project.trim()}?`;
+    }
+
+    if (this.modoModal === 'clonar') {
+      return `Deseja criar o clone ${this.novoProjeto.project.trim()}?`;
+    }
+
+    return `Deseja cadastrar o projeto ${this.novoProjeto.project.trim()}?`;
+  }
+
+  getTextoBotaoSalvar(): string {
+    if (this.modoModal === 'editar') {
+      return 'Atualizar Projeto';
+    }
+
+    if (this.modoModal === 'clonar') {
+      return 'Salvar Clone';
+    }
+
+    return 'Salvar Projeto';
+  }
+
+  abrirMenuApoio(event: MouseEvent, projeto: Project): void {
+    event.stopPropagation();
+
+    this.projetoSelecionadoMenu = projeto;
+    this.mostrarMenuApoio = true;
+
+    const menuWidth = 210;
+    const margin = 12;
+    const desiredX = event.clientX + 8;
+    const desiredY = event.clientY + 8;
+
+    this.menuApoioPosicao = {
+      x: Math.min(desiredX, window.innerWidth - menuWidth - margin),
+      y: Math.max(margin, desiredY)
+    };
+  }
+
+  fecharMenuApoio(): void {
+    this.mostrarMenuApoio = false;
+    this.projetoSelecionadoMenu = null;
+  }
+
+  abrirPopupConfirmacao(acao: 'salvar' | 'excluir', titulo: string, mensagem: string, botao: string): void {
+    this.confirmacaoAcaoPendente = acao;
+    this.confirmacaoPopupTitulo = titulo;
+    this.confirmacaoPopupMensagem = mensagem;
+    this.confirmacaoPopupBotao = botao;
+    this.showConfirmacaoPopup = true;
+  }
+
+  fecharPopupConfirmacao(): void {
+    this.showConfirmacaoPopup = false;
+    this.confirmacaoAcaoPendente = '';
+    this.confirmacaoPopupTitulo = '';
+    this.confirmacaoPopupMensagem = '';
+    this.confirmacaoPopupBotao = 'Confirmar';
+    this.projetoPendenteExclusao = null;
+  }
+
+  confirmarAcaoPopup(): void {
+    const acao = this.confirmacaoAcaoPendente;
+    const projetoExclusao = this.projetoPendenteExclusao;
+
+    this.showConfirmacaoPopup = false;
+    this.confirmacaoAcaoPendente = '';
+    this.confirmacaoPopupTitulo = '';
+    this.confirmacaoPopupMensagem = '';
+    this.confirmacaoPopupBotao = 'Confirmar';
+
+    if (acao === 'salvar') {
+      this.executarSalvarProjeto();
+      return;
+    }
+
+    if (acao === 'excluir' && projetoExclusao) {
+      this.executarExcluirProjeto(projetoExclusao);
+    }
+
+    this.projetoPendenteExclusao = null;
+  }
+
+  private gerarNomeClone(baseProjectName: string): string {
+    const base = String(baseProjectName || '').replace(/\s\(\d+\)$/i, '').trim();
+    if (!base) {
+      return 'Projeto (1)';
+    }
+
+    const used = new Set<number>();
+    const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^${escapedBase} \\((\\d+)\\)$`, 'i');
+
+    this.projetos.forEach((item) => {
+      const current = String(item.project || '').trim();
+      if (current.toLowerCase() === base.toLowerCase()) {
+        used.add(0);
+        return;
+      }
+
+      const match = current.match(regex);
+      if (match) {
+        used.add(Number(match[1]));
+      }
+    });
+
+    let idx = 1;
+    while (used.has(idx)) {
+      idx += 1;
+    }
+
+    return `${base} (${idx})`;
+  }
+
+  private parseJsonValue(jsonValue: any): Record<string, any> {
+    if (!jsonValue) {
+      return {};
+    }
+
+    if (typeof jsonValue === 'string') {
+      try {
+        return JSON.parse(jsonValue);
+      } catch {
+        return {};
+      }
+    }
+
+    return jsonValue;
+  }
+
+  private mapProjectToForm(project: ProjectDetail): NovoProjetoForm {
+    const linearMeters = this.parseJsonValue(project.linear_meters);
+    const squareMeters = this.parseJsonValue(project.square_meters);
+    const plateConsumption = this.parseJsonValue(project.plate_consumption);
+    const reviews = this.parseJsonValue(project.reviews);
+
+    const toStringValue = (value: any): string => {
+      if (value === null || value === undefined || value === '') {
+        return '';
+      }
+
+      return String(value);
+    };
+
+    const toNullableNumber = (value: any): number | null => {
+      if (value === null || value === undefined || value === '') {
+        return null;
+      }
+
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    const toNumber = (value: any): number => {
+      if (value === null || value === undefined || value === '') {
+        return 0;
+      }
+
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    return {
+      project: toStringValue(project.project),
+      material_type: toStringValue(project.material_type),
+      brand: toStringValue(project.brand),
+      model: toStringValue(project.model),
+      spec_8c: toStringValue(linearMeters['8C']),
+      spec_9c: toStringValue(linearMeters['9C']),
+      spec_11c: toStringValue(linearMeters['11C']),
+      metro_quadrado_8c: toNullableNumber(squareMeters['8C']),
+      metro_quadrado_9c: toNullableNumber(squareMeters['9C']),
+      metro_quadrado_11c: toNullableNumber(squareMeters['11C']),
+      quantidade_placas_8c: toNumber(plateConsumption['8C']),
+      quantidade_placas_9c: toNumber(plateConsumption['9C']),
+      quantidade_placas_11c: toNumber(plateConsumption['11C']),
+      flag_corte: Boolean(reviews['cutting'] ?? project.flag_corte),
+      flag_mapa_kit: Boolean(reviews['ki_Layout'] ?? project.flag_mapa_kit),
+      flag_relatorio_encaixe: Boolean(reviews['nesting_report'] ?? project.flag_relatorio_encaixe),
+      flag_etiquetagem: Boolean(reviews['labeling'] ?? project.flag_etiquetagem),
+      flag_modelo_pastas: Boolean(reviews['folder_template'] ?? project.flag_modelo_pastas),
+      roof_config: toStringValue(project.roof_config),
+      total_parts_qty: toNumber(project.total_parts_qty),
+      lid_parts_qty: toNumber(project.lid_parts_qty)
+    };
+  }
+
+  private abrirProjetoEmModo(modo: 'visualizar' | 'editar'): void {
+    if (!this.projetoSelecionadoMenu?.id) {
+      return;
+    }
+
+    const projectId = this.projetoSelecionadoMenu.id;
+    this.fecharMenuApoio();
+    this.carregandoProjetoDetalhe = true;
+    this.cdr.detectChanges();
+
+    this.jiraService.obterProjectById(projectId).subscribe({
+      next: (response) => {
+        this.ngZone.run(() => {
+          this.novoProjeto = this.mapProjectToForm(response.data);
+          this.projetoEmEdicaoId = projectId;
+          this.modoModal = modo;
+          this.abaAtiva = 'geral';
+          this.mostrarModal = true;
+          this.carregandoProjetoDetalhe = false;
+          this.cdr.detectChanges();
+        });
+      },
+      error: (error) => {
+        this.ngZone.run(() => {
+          this.carregandoProjetoDetalhe = false;
+          this.showCadastroPopup = true;
+          this.cadastroPopupType = 'error';
+          this.cadastroPopupMessage = error?.error?.message || 'Erro ao carregar dados do projeto.';
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  visualizarProjetoSelecionado(): void {
+    this.abrirProjetoEmModo('visualizar');
+  }
+
+  editarProjetoSelecionado(): void {
+    this.abrirProjetoEmModo('editar');
+  }
+
+  clonarProjetoSelecionado(): void {
+    if (!this.projetoSelecionadoMenu?.id) {
+      return;
+    }
+
+    const projectId = this.projetoSelecionadoMenu.id;
+    this.fecharMenuApoio();
+
+    this.carregandoProjetoDetalhe = true;
+    this.cdr.detectChanges();
+
+    this.jiraService.obterProjectById(projectId).subscribe({
+      next: (response) => {
+        this.ngZone.run(() => {
+          this.novoProjeto = this.mapProjectToForm(response.data);
+          this.novoProjeto.project = this.gerarNomeClone(this.novoProjeto.project);
+          this.projetoEmEdicaoId = null;
+          this.modoModal = 'clonar';
+          this.abaAtiva = 'geral';
+          this.mostrarModal = true;
+          this.carregandoProjetoDetalhe = false;
+          this.cdr.detectChanges();
+        });
+      },
+      error: (error) => {
+        this.ngZone.run(() => {
+          this.carregandoProjetoDetalhe = false;
+          this.showCadastroPopup = true;
+          this.cadastroPopupType = 'error';
+          this.cadastroPopupMessage = error?.error?.message || 'Erro ao preparar clonagem.';
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  excluirProjetoSelecionado(): void {
+    if (!this.projetoSelecionadoMenu?.id) {
+      return;
+    }
+
+    this.projetoPendenteExclusao = this.projetoSelecionadoMenu;
+    this.fecharMenuApoio();
+
+    this.abrirPopupConfirmacao(
+      'excluir',
+      'Confirma exclusão',
+      `Deseja excluir o projeto ${this.projetoPendenteExclusao.project}?`,
+      'Excluir Projeto'
+    );
+  }
+
+  private executarExcluirProjeto(projeto: Project): void {
+    if (!projeto?.id) {
+      return;
+    }
+
+    this.jiraService.excluirProject(projeto.id).subscribe({
+      next: (response) => {
+        this.carregarProjetos();
+        this.showCadastroPopup = true;
+        this.cadastroPopupType = 'success';
+        this.cadastroPopupMessage = response?.message || 'Projeto excluído com sucesso.';
+      },
+      error: (error) => {
+        this.showCadastroPopup = true;
+        this.cadastroPopupType = 'error';
+        this.cadastroPopupMessage = error?.error?.message || 'Erro ao excluir projeto.';
+      }
+    });
+  }
+
   carregarMarcas(): void {
     console.log('🏷️ Carregando marcas do banco de dados...');
     
@@ -96,6 +477,80 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
   selecionarAba(aba: 'geral' | 'especificacao'): void {
     this.abaAtiva = aba;
     console.log('Aba ativa:', aba);
+  }
+
+  private parseNumero(value: string): number | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    const normalizado = String(value).trim().replace(',', '.');
+    if (!normalizado) {
+      return null;
+    }
+
+    const numero = Number(normalizado);
+    return Number.isFinite(numero) ? numero : null;
+  }
+
+  private calcularValorMetroQuadrado(k: number | null | undefined): string | number {
+    if (k === null || k === undefined) return '';
+
+    if (k < 2990) {
+      return (k / 1000 * 1.6) + 0.008;
+    } else if (k < 5980) {
+      return (k / 1000 * 1.6) + 0.024;
+    } else if (k < 8970) {
+      return (k / 1000 * 1.6) + 0.04;
+    } else if (k < 11960) {
+      return (k / 1000 * 1.6) + 0.056;
+    } else if (k < 14950) {
+      return (k / 1000 * 1.6) + 0.064;
+    } else {
+      return 'fora da faixa';
+    }
+  }
+
+  onSpec8cChange(valorMm: string): void {
+    const valorCalculado = this.calcularValorMetroQuadrado(this.parseNumero(valorMm));
+
+    if (typeof valorCalculado === 'number') {
+      const metroQuadrado = Number(valorCalculado.toFixed(3));
+      this.novoProjeto.metro_quadrado_8c = metroQuadrado;
+      this.novoProjeto.quantidade_placas_8c = Number((metroQuadrado / 4.8).toFixed(3));
+      return;
+    }
+
+    this.novoProjeto.metro_quadrado_8c = null;
+    this.novoProjeto.quantidade_placas_8c = 0;
+  }
+
+  onSpec9cChange(valorMm: string): void {
+    const valorCalculado = this.calcularValorMetroQuadrado(this.parseNumero(valorMm));
+
+    if (typeof valorCalculado === 'number') {
+      const metroQuadrado = Number(valorCalculado.toFixed(3));
+      this.novoProjeto.metro_quadrado_9c = metroQuadrado;
+      this.novoProjeto.quantidade_placas_9c = Number((metroQuadrado / 4.8).toFixed(3));
+      return;
+    }
+
+    this.novoProjeto.metro_quadrado_9c = null;
+    this.novoProjeto.quantidade_placas_9c = 0;
+  }
+
+  onSpec11cChange(valorMm: string): void {
+    const valorCalculado = this.calcularValorMetroQuadrado(this.parseNumero(valorMm));
+
+    if (typeof valorCalculado === 'number') {
+      const metroQuadrado = Number(valorCalculado.toFixed(3));
+      this.novoProjeto.metro_quadrado_11c = metroQuadrado;
+      this.novoProjeto.quantidade_placas_11c = Number((metroQuadrado / 4.8).toFixed(3));
+      return;
+    }
+
+    this.novoProjeto.metro_quadrado_11c = null;
+    this.novoProjeto.quantidade_placas_11c = 0;
   }
 
   carregarProjetos(): void {
@@ -197,13 +652,26 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
 
   novoCadastro(): void {
     console.log('🆕 Novo cadastro solicitado');
+    this.modoModal = 'novo';
+    this.projetoEmEdicaoId = null;
+    this.abaAtiva = 'geral';
     this.mostrarModal = true;
     this.limparFormulario();
   }
 
   fecharModal(): void {
     this.mostrarModal = false;
+    this.modoModal = 'novo';
+    this.projetoEmEdicaoId = null;
+    this.abaAtiva = 'geral';
     this.limparFormulario();
+  }
+
+  closeCadastroPopup(): void {
+    this.showCadastroPopup = false;
+    this.cadastroPopupType = '';
+    this.cadastroPopupMessage = '';
+    this.cdr.detectChanges();
   }
 
   limparFormulario(): void {
@@ -215,9 +683,9 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
       spec_8c: '',
       spec_9c: '',
       spec_11c: '',
-      metro_quadrado_8c: 0,
-      metro_quadrado_9c: 0,
-      metro_quadrado_11c: 0,
+      metro_quadrado_8c: null,
+      metro_quadrado_9c: null,
+      metro_quadrado_11c: null,
       quantidade_placas_8c: 0,
       quantidade_placas_9c: 0,
       quantidade_placas_11c: 0,
@@ -233,23 +701,111 @@ export class CadastroProjetosComponent implements OnInit, OnDestroy {
   }
 
   salvarNovoProjeto(): void {
-    // Validação básica
-    if (!this.novoProjeto.project || !this.novoProjeto.material_type || !this.novoProjeto.brand) {
-      alert('Por favor, preencha os campos obrigatórios: Projeto, Tipo de Material e Marca');
+    if (this.modoModal === 'visualizar') {
+      return;
+    }
+
+    if (this.salvandoProjeto) {
+      return;
+    }
+
+    const camposFaltantes: string[] = [];
+    if (!this.novoProjeto.project.trim()) camposFaltantes.push('Projeto');
+    if (!this.novoProjeto.material_type.trim()) camposFaltantes.push('Tipo de Material');
+    if (!this.novoProjeto.brand.trim()) camposFaltantes.push('Marca');
+    if (!this.novoProjeto.model.trim()) camposFaltantes.push('Modelo');
+    if (!Number.isFinite(this.novoProjeto.total_parts_qty) || this.novoProjeto.total_parts_qty <= 0) {
+      camposFaltantes.push('Qtd. Total');
+    }
+
+    if (camposFaltantes.length > 0) {
+      this.showCadastroPopup = true;
+      this.cadastroPopupType = 'error';
+      this.cadastroPopupMessage = `Preencha os campos obrigatórios:\n- ${camposFaltantes.join('\n- ')}`;
+      return;
+    }
+
+    this.abrirPopupConfirmacao(
+      'salvar',
+      this.getTituloConfirmacao(),
+      this.getMensagemConfirmacaoSalvar(),
+      this.getTextoBotaoSalvar()
+    );
+  }
+
+  private executarSalvarProjeto(): void {
+    if (this.salvandoProjeto) {
       return;
     }
 
     this.salvandoProjeto = true;
-    
-    // TODO: Implementar chamada à API para criar novo projeto
-    console.log('Salvando novo projeto:', this.novoProjeto);
-    
-    // Simulação temporária - remover quando implementar a API
-    setTimeout(() => {
-      this.salvandoProjeto = false;
-      this.fecharModal();
-      alert('Projeto cadastrado com sucesso!');
-      this.carregarProjetos(); // Recarregar lista
-    }, 1000);
+
+    const payload = {
+      ...this.novoProjeto,
+      project: this.novoProjeto.project.trim(),
+      material_type: this.novoProjeto.material_type.trim(),
+      brand: this.novoProjeto.brand.trim(),
+      model: this.novoProjeto.model.trim(),
+      roof_config: this.novoProjeto.roof_config.trim(),
+      total_parts_qty: Math.trunc(this.novoProjeto.total_parts_qty),
+      lid_parts_qty: Math.max(0, Math.trunc(this.novoProjeto.lid_parts_qty || 0)),
+      linear_meters: {
+        '8C': this.novoProjeto.spec_8c,
+        '9C': this.novoProjeto.spec_9c,
+        '11C': this.novoProjeto.spec_11c
+      },
+      square_meters: {
+        '8C': this.novoProjeto.metro_quadrado_8c,
+        '9C': this.novoProjeto.metro_quadrado_9c,
+        '11C': this.novoProjeto.metro_quadrado_11c
+      },
+      plate_consumption: {
+        '8C': this.novoProjeto.quantidade_placas_8c,
+        '9C': this.novoProjeto.quantidade_placas_9c,
+        '11C': this.novoProjeto.quantidade_placas_11c
+      },
+      reviews: {
+        cutting: this.novoProjeto.flag_corte,
+        labeling: this.novoProjeto.flag_etiquetagem,
+        ki_Layout: this.novoProjeto.flag_mapa_kit,
+        nesting_report: this.novoProjeto.flag_relatorio_encaixe,
+        folder_template: this.novoProjeto.flag_modelo_pastas
+      }
+    };
+
+    const operacaoEdicao = this.modoModal === 'editar' && !!this.projetoEmEdicaoId;
+
+    const idEdicao = this.projetoEmEdicaoId;
+
+    const request$ = operacaoEdicao && idEdicao !== null
+      ? this.jiraService.atualizarProject(idEdicao, payload)
+      : this.jiraService.criarProject(payload);
+
+    request$.subscribe({
+      next: (response) => {
+        this.salvandoProjeto = false;
+        this.fecharModal();
+
+        // Força exibição do novo item recém-criado no topo da listagem.
+        this.pagina = 1;
+        this.campoOrdenacao = 'id';
+        this.ordem = 'DESC';
+        this.carregarProjetos();
+
+        this.showCadastroPopup = true;
+        this.cadastroPopupType = 'success';
+        this.cadastroPopupMessage = response?.message || (operacaoEdicao
+          ? 'Projeto atualizado com sucesso!'
+          : 'Projeto cadastrado com sucesso!');
+      },
+      error: (error) => {
+        this.salvandoProjeto = false;
+        this.showCadastroPopup = true;
+        this.cadastroPopupType = 'error';
+        this.cadastroPopupMessage = error?.error?.message || 'Erro ao cadastrar projeto.';
+        console.error('❌ Erro ao salvar projeto:', error);
+        this.cdr.detectChanges();
+      }
+    });
   }
 }

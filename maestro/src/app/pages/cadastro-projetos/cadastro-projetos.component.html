@@ -96,7 +96,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let projeto of projetos" class="projeto-row">
+          <tr *ngFor="let projeto of projetos" class="projeto-row" (click)="abrirMenuApoio($event, projeto)">
             <td class="project-id">{{ projeto.project }}</td>
             <td class="material-type">{{ projeto.material_type }}</td>
             <td class="brand">{{ projeto.brand }}</td>
@@ -156,10 +156,10 @@
 
 <!-- Modal de Novo Cadastro -->
 <div class="modal-overlay" *ngIf="mostrarModal" (click)="fecharModal()">
-  <div class="modal-container" (click)="$event.stopPropagation()">
+  <div class="modal-container" [class.visualizacao]="modoModal === 'visualizar'" (click)="$event.stopPropagation()">
     <div class="modal-header">
       <div class="header-content">
-        <h2>Novo Cadastro de Projeto</h2>
+        <h2>{{ getTituloModal() }}</h2>
       </div>
       <button class="btn-close" (click)="fecharModal()" type="button">
         <span class="material-symbols-outlined">close</span>
@@ -187,6 +187,7 @@
     <!-- Conteúdo da Aba Geral -->
     <div class="modal-body" *ngIf="abaAtiva === 'geral'">
       <form class="cadastro-form">
+        <fieldset class="modal-fieldset" [disabled]="modoModal === 'visualizar'">
         <div class="form-row specs-row">
           <div class="form-group">
             <label for="project">Projeto <span class="required">*</span></label>
@@ -226,12 +227,13 @@
           </div>
 
           <div class="form-group">
-            <label for="model">Modelo</label>
+            <label for="model">Modelo <span class="required">*</span></label>
             <input 
               type="text" 
               id="model" 
               [(ngModel)]="novoProjeto.model" 
               name="model"
+              required
               placeholder="Ex: Corolla">
           </div>
         </div>
@@ -248,13 +250,14 @@
 
         <div class="form-row">
           <div class="form-group">
-            <label for="total_parts_qty">Qtd. Total:</label>
+            <label for="total_parts_qty">Qtd. Total: <span class="required">*</span></label>
             <input 
               type="number" 
               id="total_parts_qty" 
               [(ngModel)]="novoProjeto.total_parts_qty" 
               name="total_parts_qty"
-              min="0"
+              required
+              min="1"
               placeholder="0">
           </div>
 
@@ -269,12 +272,14 @@
               placeholder="0">
           </div>
         </div>
+        </fieldset>
       </form>
     </div>
 
     <!-- Conteúdo da Aba Especificacao -->
     <div class="modal-body" *ngIf="abaAtiva === 'especificacao'">
       <form class="cadastro-form">
+        <fieldset class="modal-fieldset" [disabled]="modoModal === 'visualizar'">
         <div class="specs-title-line">
           <span>Placas</span>
         </div>
@@ -286,6 +291,7 @@
               type="text"
               id="spec_8c"
               [(ngModel)]="novoProjeto.spec_8c"
+              (ngModelChange)="onSpec8cChange($event)"
               name="spec_8c"
               placeholder="Informe 8C">
           </div>
@@ -296,6 +302,7 @@
               type="text"
               id="spec_9c"
               [(ngModel)]="novoProjeto.spec_9c"
+              (ngModelChange)="onSpec9cChange($event)"
               name="spec_9c"
               placeholder="Informe 9C">
           </div>
@@ -306,6 +313,7 @@
               type="text"
               id="spec_11c"
               [(ngModel)]="novoProjeto.spec_11c"
+              (ngModelChange)="onSpec11cChange($event)"
               name="spec_11c"
               placeholder="Informe 11C">
           </div>
@@ -362,7 +370,7 @@
               name="quantidade_placas_8c"
               disabled
               min="0"
-              step="1"
+              step="0.001"
               placeholder="0">
           </div>
 
@@ -375,7 +383,7 @@
               name="quantidade_placas_9c"
               disabled
               min="0"
-              step="1"
+              step="0.001"
               placeholder="0">
           </div>
 
@@ -388,7 +396,7 @@
               name="quantidade_placas_11c"
               disabled
               min="0"
-              step="1"
+              step="0.001"
               placeholder="0">
           </div>
         </div>
@@ -443,6 +451,7 @@
             <span>Modelo pastas</span>
           </label>
         </div>
+        </fieldset>
       </form>
     </div>
     
@@ -456,15 +465,90 @@
           class="btn btn-secondary"
           type="button"
           [disabled]="salvandoProjeto">
-          Cancelar
+          {{ modoModal === 'visualizar' ? 'Fechar' : 'Cancelar' }}
         </button>
         <button 
+          *ngIf="modoModal !== 'visualizar'"
           (click)="salvarNovoProjeto()" 
           class="btn btn-primary"
           type="button"
           [disabled]="salvandoProjeto">
-          <span *ngIf="!salvandoProjeto">Salvar Projeto</span>
+          <span *ngIf="!salvandoProjeto">{{ getTextoBotaoSalvar() }}</span>
           <span *ngIf="salvandoProjeto">Salvando...</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div
+  class="row-support-menu"
+  *ngIf="mostrarMenuApoio"
+  [style.left.px]="menuApoioPosicao.x"
+  [style.top.px]="menuApoioPosicao.y"
+  (click)="$event.stopPropagation()">
+  <button type="button" class="menu-item" (click)="visualizarProjetoSelecionado()">Visualizar</button>
+  <button type="button" class="menu-item" (click)="editarProjetoSelecionado()">Editar</button>
+  <button type="button" class="menu-item" (click)="clonarProjetoSelecionado()">Clonar</button>
+  <button type="button" class="menu-item danger" (click)="excluirProjetoSelecionado()">Excluir</button>
+</div>
+
+<div class="modal-overlay result-popup-overlay" *ngIf="showCadastroPopup" (click)="closeCadastroPopup()">
+  <div class="modal-container result-popup-content" [class.success]="cadastroPopupType === 'success'" [class.error]="cadastroPopupType === 'error'" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <div class="header-content">
+        <h2>{{ cadastroPopupType === 'success' ? 'Cadastro concluído' : 'Erro no cadastro' }}</h2>
+      </div>
+      <button class="btn-close" (click)="closeCadastroPopup()" type="button">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <pre class="result-popup-message">{{ cadastroPopupMessage }}</pre>
+    </div>
+
+    <div class="modal-footer">
+      <div class="footer-actions">
+        <button
+          (click)="closeCadastroPopup()"
+          class="btn btn-primary"
+          type="button">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay result-popup-overlay" *ngIf="showConfirmacaoPopup" (click)="fecharPopupConfirmacao()">
+  <div class="modal-container result-popup-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <div class="header-content">
+        <h2>{{ confirmacaoPopupTitulo }}</h2>
+      </div>
+      <button class="btn-close" (click)="fecharPopupConfirmacao()" type="button">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <pre class="result-popup-message">{{ confirmacaoPopupMensagem }}</pre>
+    </div>
+
+    <div class="modal-footer">
+      <div class="footer-actions">
+        <button
+          (click)="fecharPopupConfirmacao()"
+          class="btn btn-secondary"
+          type="button">
+          Cancelar
+        </button>
+        <button
+          (click)="confirmarAcaoPopup()"
+          class="btn btn-primary"
+          type="button">
+          {{ confirmacaoPopupBotao }}
         </button>
       </div>
     </div>

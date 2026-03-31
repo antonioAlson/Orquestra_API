@@ -762,6 +762,40 @@ export class JiraService {
   }
 
   /**
+   * Cria um novo projeto na tabela maestro.project
+   */
+  criarProject(payload: CreateProjectPayload): Observable<{ success: boolean; message: string; data: Project }> {
+    console.log('🆕 [JiraService] Criando novo projeto:', payload);
+
+    return this.http.post<{ success: boolean; message: string; data: Project }>(`${this.apiUrl}/jira/projects`, payload).pipe(
+      tap({
+        next: (response) => {
+          console.log('✅ [JiraService] Projeto criado com sucesso:', response);
+        },
+        error: (error) => {
+          console.error('❌ [JiraService] Erro ao criar projeto:', error);
+        }
+      })
+    );
+  }
+
+  obterProjectById(id: number): Observable<{ success: boolean; data: ProjectDetail }> {
+    return this.http.get<{ success: boolean; data: ProjectDetail }>(`${this.apiUrl}/jira/projects/${id}`);
+  }
+
+  atualizarProject(id: number, payload: CreateProjectPayload): Observable<{ success: boolean; message: string; data: Project }> {
+    return this.http.put<{ success: boolean; message: string; data: Project }>(`${this.apiUrl}/jira/projects/${id}`, payload);
+  }
+
+  clonarProject(id: number): Observable<{ success: boolean; message: string; data: Project }> {
+    return this.http.post<{ success: boolean; message: string; data: Project }>(`${this.apiUrl}/jira/projects/${id}/clone`, {});
+  }
+
+  excluirProject(id: number): Observable<{ success: boolean; message: string }> {
+    return this.http.delete<{ success: boolean; message: string }>(`${this.apiUrl}/jira/projects/${id}`);
+  }
+
+  /**
    * Obtém todas as marcas únicas do banco de dados
    */
   obterMarcasUnicas(): Observable<string[]> {
@@ -852,6 +886,24 @@ export interface Project {
   lid_parts_qty: number;
 }
 
+export interface ProjectDetail extends Project {
+  linear_meters?: Record<string, string | number>;
+  square_meters?: Record<string, string | number>;
+  plate_consumption?: Record<string, string | number>;
+  reviews?: {
+    cutting?: boolean;
+    labeling?: boolean;
+    ki_Layout?: boolean;
+    nesting_report?: boolean;
+    folder_template?: boolean;
+  };
+  flag_corte?: boolean;
+  flag_mapa_kit?: boolean;
+  flag_relatorio_encaixe?: boolean;
+  flag_etiquetagem?: boolean;
+  flag_modelo_pastas?: boolean;
+}
+
 export interface ProjectsResponse {
   success: boolean;
   data: Project[];
@@ -860,5 +912,39 @@ export interface ProjectsResponse {
     totalPages: number;
     totalItems: number;
     itemsPerPage: number;
+  };
+}
+
+export interface CreateProjectPayload {
+  project: string;
+  material_type: string;
+  brand: string;
+  model: string;
+  roof_config?: string;
+  total_parts_qty: number;
+  lid_parts_qty?: number;
+  spec_8c?: string;
+  spec_9c?: string;
+  spec_11c?: string;
+  metro_quadrado_8c?: number | null;
+  metro_quadrado_9c?: number | null;
+  metro_quadrado_11c?: number | null;
+  quantidade_placas_8c?: number;
+  quantidade_placas_9c?: number;
+  quantidade_placas_11c?: number;
+  flag_corte?: boolean;
+  flag_mapa_kit?: boolean;
+  flag_relatorio_encaixe?: boolean;
+  flag_etiquetagem?: boolean;
+  flag_modelo_pastas?: boolean;
+  linear_meters?: Record<string, string | number | null>;
+  square_meters?: Record<string, string | number | null>;
+  plate_consumption?: Record<string, string | number | null>;
+  reviews?: {
+    cutting: boolean;
+    labeling: boolean;
+    ki_Layout: boolean;
+    nesting_report: boolean;
+    folder_template: boolean;
   };
 }

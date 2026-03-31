@@ -42,17 +42,50 @@ pool.on('error', (err) => {
 // Função para executar queries
 export const query = (text, params) => pool.query(text, params);
 
+async function runCompatibilityQuery(sql, label) {
+  try {
+    await pool.query(sql);
+  } catch (error) {
+    if (error?.code === '42501') {
+      console.warn(`⚠️ Sem permissão para ajuste automático: ${label}`);
+      return;
+    }
+
+    throw error;
+  }
+}
+
 // Garante colunas esperadas para versões antigas do banco.
 export async function ensureDatabaseCompatibility() {
-  await pool.query(`
+  await runCompatibilityQuery(`
     ALTER TABLE IF EXISTS maestro.users
     ADD COLUMN IF NOT EXISTS menu_access JSONB NOT NULL DEFAULT '[]'::jsonb;
-  `);
+  `, 'maestro.users.menu_access');
 
-  await pool.query(`
+  await runCompatibilityQuery(`
     ALTER TABLE IF EXISTS maestro.users
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-  `);
+  `, 'maestro.users.updated_at');
+
+  await runCompatibilityQuery(`
+    ALTER TABLE IF EXISTS maestro.project
+    ADD COLUMN IF NOT EXISTS linear_meters JSONB NOT NULL DEFAULT '{"8C": "", "9C": "", "11C": ""}'::jsonb;
+  `, 'maestro.project.linear_meters');
+
+  await runCompatibilityQuery(`
+    ALTER TABLE IF EXISTS maestro.project
+    ADD COLUMN IF NOT EXISTS square_meters JSONB NOT NULL DEFAULT '{"8C": "", "9C": "", "11C": ""}'::jsonb;
+  `, 'maestro.project.square_meters');
+
+  await runCompatibilityQuery(`
+    ALTER TABLE IF EXISTS maestro.project
+    ADD COLUMN IF NOT EXISTS plate_consumption JSONB NOT NULL DEFAULT '{"8C": "", "9C": "", "11C": ""}'::jsonb;
+  `, 'maestro.project.plate_consumption');
+
+  await runCompatibilityQuery(`
+    ALTER TABLE IF EXISTS maestro.project
+    ADD COLUMN IF NOT EXISTS reviews JSONB NOT NULL DEFAULT '{"cutting": false, "labeling": false, "ki_Layout": false, "nesting_report": false, "folder_template": false}'::jsonb;
+  `, 'maestro.project.reviews');
 }
 
 export default pool;

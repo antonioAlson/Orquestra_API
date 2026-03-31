@@ -2862,6 +2862,466 @@ export const listarProjects = async (req, res) => {
 };
 
 /**
+ * Cria novo projeto na tabela maestro.project
+ */
+export const criarProject = async (req, res) => {
+  try {
+    const body = req.body || {};
+    const parseDecimalOrEmpty = (value) => {
+      if (value === null || value === undefined || String(value).trim() === '') {
+        return '';
+      }
+
+      const normalized = String(value).replace(',', '.').trim();
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : '';
+    };
+
+    const project = String(body.project || '').trim();
+    const materialType = String(body.material_type || '').trim();
+    const brand = String(body.brand || '').trim();
+    const model = String(body.model || '').trim();
+    const totalPartsQty = Number(body.total_parts_qty);
+
+    const camposObrigatoriosFaltantes = [];
+    if (!project) camposObrigatoriosFaltantes.push('Projeto');
+    if (!materialType) camposObrigatoriosFaltantes.push('Tipo de Material');
+    if (!brand) camposObrigatoriosFaltantes.push('Marca');
+    if (!model) camposObrigatoriosFaltantes.push('Modelo');
+    if (!Number.isFinite(totalPartsQty) || totalPartsQty <= 0) camposObrigatoriosFaltantes.push('Qtd. Total');
+
+    if (camposObrigatoriosFaltantes.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Campos obrigatórios inválidos: ${camposObrigatoriosFaltantes.join(', ')}`
+      });
+    }
+
+    const payload = {
+      project,
+      material_type: materialType,
+      brand,
+      model,
+      roof_config: String(body.roof_config || '').trim(),
+      total_parts_qty: Math.trunc(totalPartsQty),
+      lid_parts_qty: Number.isFinite(Number(body.lid_parts_qty)) ? Math.max(0, Math.trunc(Number(body.lid_parts_qty))) : 0,
+      linear_meters: {
+        '8C': parseDecimalOrEmpty(body?.linear_meters?.['8C'] ?? body.spec_8c),
+        '9C': parseDecimalOrEmpty(body?.linear_meters?.['9C'] ?? body.spec_9c),
+        '11C': parseDecimalOrEmpty(body?.linear_meters?.['11C'] ?? body.spec_11c)
+      },
+      square_meters: {
+        '8C': parseDecimalOrEmpty(body?.square_meters?.['8C'] ?? body.metro_quadrado_8c),
+        '9C': parseDecimalOrEmpty(body?.square_meters?.['9C'] ?? body.metro_quadrado_9c),
+        '11C': parseDecimalOrEmpty(body?.square_meters?.['11C'] ?? body.metro_quadrado_11c)
+      },
+      plate_consumption: {
+        '8C': parseDecimalOrEmpty(body?.plate_consumption?.['8C'] ?? body?.plaste_consumption?.['8C'] ?? body?.plates_consumption?.['8C'] ?? body.quantidade_placas_8c),
+        '9C': parseDecimalOrEmpty(body?.plate_consumption?.['9C'] ?? body?.plaste_consumption?.['9C'] ?? body?.plates_consumption?.['9C'] ?? body.quantidade_placas_9c),
+        '11C': parseDecimalOrEmpty(body?.plate_consumption?.['11C'] ?? body?.plaste_consumption?.['11C'] ?? body?.plates_consumption?.['11C'] ?? body.quantidade_placas_11c)
+      },
+      reviews: {
+        cutting: Boolean(body?.reviews?.cutting ?? body.flag_corte),
+        labeling: Boolean(body?.reviews?.labeling ?? body.flag_etiquetagem),
+        ki_Layout: Boolean(body?.reviews?.ki_Layout ?? body.flag_mapa_kit),
+        nesting_report: Boolean(body?.reviews?.nesting_report ?? body.flag_relatorio_encaixe),
+        folder_template: Boolean(body?.reviews?.folder_template ?? body.flag_modelo_pastas)
+      },
+      flag_corte: Boolean(body.flag_corte),
+      flag_mapa_kit: Boolean(body.flag_mapa_kit),
+      flag_relatorio_encaixe: Boolean(body.flag_relatorio_encaixe),
+      flag_etiquetagem: Boolean(body.flag_etiquetagem),
+      flag_modelo_pastas: Boolean(body.flag_modelo_pastas)
+    };
+
+    const columnsResult = await pool.query(
+      `
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'maestro'
+          AND table_name = 'project'
+      `
+    );
+
+    const existingColumns = new Set(columnsResult.rows.map((row) => row.column_name));
+    const entries = Object.entries(payload).filter(([column]) => existingColumns.has(column));
+
+    if (entries.length === 0) {
+      return res.status(500).json({
+        success: false,
+        message: 'Não foi possível identificar colunas de inserção na tabela maestro.project.'
+      });
+    }
+
+    const missingMandatoryColumns = ['project', 'material_type', 'brand', 'model', 'total_parts_qty']
+      .filter((column) => !existingColumns.has(column));
+
+    if (missingMandatoryColumns.length > 0) {
+      return res.status(500).json({
+        success: false,
+        message: `A tabela maestro.project não possui as colunas obrigatórias: ${missingMandatoryColumns.join(', ')}`
+      });
+    }
+
+    const missingJsonColumns = ['linear_meters', 'square_meters', 'plate_consumption', 'reviews']
+      .filter((column) => !existingColumns.has(column));
+
+    if (missingJsonColumns.length > 0) {
+      return res.status(500).json({
+        success: false,
+        message: `A tabela maestro.project não possui as colunas JSON esperadas: ${missingJsonColumns.join(', ')}`
+      });
+    }
+
+    const duplicateCheck = await pool.query(
+      `
+        SELECT id, project
+        FROM maestro.project
+        WHERE LOWER(project) = LOWER($1)
+        LIMIT 1
+      `,
+      [project]
+    );
+
+    if (duplicateCheck.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Já existe um projeto cadastrado com o código ${duplicateCheck.rows[0].project}.`
+      });
+    }
+
+    const insertColumns = entries.map(([column]) => column);
+    const values = entries.map(([, value]) => value);
+    const placeholders = insertColumns.map((_, index) => `$${index + 1}`).join(', ');
+
+    const insertQuery = `
+      INSERT INTO maestro.project (${insertColumns.join(', ')})
+      VALUES (${placeholders})
+      RETURNING id, project, material_type, brand, model, roof_config, total_parts_qty, lid_parts_qty
+    `;
+
+    const insertResult = await pool.query(insertQuery, values);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Projeto cadastrado com sucesso.',
+      data: insertResult.rows[0]
+    });
+  } catch (error) {
+    console.error('❌ Erro ao criar projeto:', error);
+    return res.status(500).json({
+      success: false,
+      message: `Erro ao criar projeto: ${error.message}`
+    });
+  }
+};
+
+/**
+ * Obtém um projeto por ID
+ */
+export const obterProjectById = async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      return res.status(400).json({ success: false, message: 'ID de projeto inválido.' });
+    }
+
+    const result = await pool.query('SELECT * FROM maestro.project WHERE id = $1 LIMIT 1', [projectId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Projeto não encontrado.' });
+    }
+
+    return res.status(200).json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    console.error('❌ Erro ao obter projeto por ID:', error);
+    return res.status(500).json({ success: false, message: `Erro ao obter projeto: ${error.message}` });
+  }
+};
+
+/**
+ * Atualiza um projeto existente
+ */
+export const atualizarProject = async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      return res.status(400).json({ success: false, message: 'ID de projeto inválido.' });
+    }
+
+    const body = req.body || {};
+    const parseDecimalOrEmpty = (value) => {
+      if (value === null || value === undefined || String(value).trim() === '') {
+        return '';
+      }
+
+      const normalized = String(value).replace(',', '.').trim();
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : '';
+    };
+
+    const project = String(body.project || '').trim();
+    const materialType = String(body.material_type || '').trim();
+    const brand = String(body.brand || '').trim();
+    const model = String(body.model || '').trim();
+    const totalPartsQty = Number(body.total_parts_qty);
+
+    const camposObrigatoriosFaltantes = [];
+    if (!project) camposObrigatoriosFaltantes.push('Projeto');
+    if (!materialType) camposObrigatoriosFaltantes.push('Tipo de Material');
+    if (!brand) camposObrigatoriosFaltantes.push('Marca');
+    if (!model) camposObrigatoriosFaltantes.push('Modelo');
+    if (!Number.isFinite(totalPartsQty) || totalPartsQty <= 0) camposObrigatoriosFaltantes.push('Qtd. Total');
+
+    if (camposObrigatoriosFaltantes.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Campos obrigatórios inválidos: ${camposObrigatoriosFaltantes.join(', ')}`
+      });
+    }
+
+    const duplicateCheck = await pool.query(
+      `
+        SELECT id, project
+        FROM maestro.project
+        WHERE LOWER(project) = LOWER($1)
+          AND id <> $2
+        LIMIT 1
+      `,
+      [project, projectId]
+    );
+
+    if (duplicateCheck.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Já existe um projeto cadastrado com o código ${duplicateCheck.rows[0].project}.`
+      });
+    }
+
+    const payload = {
+      project,
+      material_type: materialType,
+      brand,
+      model,
+      roof_config: String(body.roof_config || '').trim(),
+      total_parts_qty: Math.trunc(totalPartsQty),
+      lid_parts_qty: Number.isFinite(Number(body.lid_parts_qty)) ? Math.max(0, Math.trunc(Number(body.lid_parts_qty))) : 0,
+      linear_meters: {
+        '8C': parseDecimalOrEmpty(body?.linear_meters?.['8C'] ?? body.spec_8c),
+        '9C': parseDecimalOrEmpty(body?.linear_meters?.['9C'] ?? body.spec_9c),
+        '11C': parseDecimalOrEmpty(body?.linear_meters?.['11C'] ?? body.spec_11c)
+      },
+      square_meters: {
+        '8C': parseDecimalOrEmpty(body?.square_meters?.['8C'] ?? body.metro_quadrado_8c),
+        '9C': parseDecimalOrEmpty(body?.square_meters?.['9C'] ?? body.metro_quadrado_9c),
+        '11C': parseDecimalOrEmpty(body?.square_meters?.['11C'] ?? body.metro_quadrado_11c)
+      },
+      plate_consumption: {
+        '8C': parseDecimalOrEmpty(body?.plate_consumption?.['8C'] ?? body?.plaste_consumption?.['8C'] ?? body?.plates_consumption?.['8C'] ?? body.quantidade_placas_8c),
+        '9C': parseDecimalOrEmpty(body?.plate_consumption?.['9C'] ?? body?.plaste_consumption?.['9C'] ?? body?.plates_consumption?.['9C'] ?? body.quantidade_placas_9c),
+        '11C': parseDecimalOrEmpty(body?.plate_consumption?.['11C'] ?? body?.plaste_consumption?.['11C'] ?? body?.plates_consumption?.['11C'] ?? body.quantidade_placas_11c)
+      },
+      reviews: {
+        cutting: Boolean(body?.reviews?.cutting ?? body.flag_corte),
+        labeling: Boolean(body?.reviews?.labeling ?? body.flag_etiquetagem),
+        ki_Layout: Boolean(body?.reviews?.ki_Layout ?? body.flag_mapa_kit),
+        nesting_report: Boolean(body?.reviews?.nesting_report ?? body.flag_relatorio_encaixe),
+        folder_template: Boolean(body?.reviews?.folder_template ?? body.flag_modelo_pastas)
+      },
+      flag_corte: Boolean(body.flag_corte),
+      flag_mapa_kit: Boolean(body.flag_mapa_kit),
+      flag_relatorio_encaixe: Boolean(body.flag_relatorio_encaixe),
+      flag_etiquetagem: Boolean(body.flag_etiquetagem),
+      flag_modelo_pastas: Boolean(body.flag_modelo_pastas)
+    };
+
+    const columnsResult = await pool.query(
+      `
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'maestro'
+          AND table_name = 'project'
+      `
+    );
+
+    const existingColumns = new Set(columnsResult.rows.map((row) => row.column_name));
+    const entries = Object.entries(payload).filter(([column]) => existingColumns.has(column));
+
+    if (entries.length === 0) {
+      return res.status(500).json({
+        success: false,
+        message: 'Não foi possível identificar colunas para atualização na tabela maestro.project.'
+      });
+    }
+
+    const setClause = entries.map(([column], index) => `${column} = $${index + 1}`).join(', ');
+    const values = entries.map(([, value]) => value);
+    values.push(projectId);
+
+    const updateResult = await pool.query(
+      `
+        UPDATE maestro.project
+        SET ${setClause}
+        WHERE id = $${values.length}
+        RETURNING id, project, material_type, brand, model, roof_config, total_parts_qty, lid_parts_qty
+      `,
+      values
+    );
+
+    if (updateResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Projeto não encontrado para atualização.' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Projeto atualizado com sucesso.',
+      data: updateResult.rows[0]
+    });
+  } catch (error) {
+    console.error('❌ Erro ao atualizar projeto:', error);
+    return res.status(500).json({ success: false, message: `Erro ao atualizar projeto: ${error.message}` });
+  }
+};
+
+/**
+ * Clona projeto existente criando novo nome incremental (1), (2), ...
+ */
+export const clonarProject = async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      return res.status(400).json({ success: false, message: 'ID de projeto inválido.' });
+    }
+
+    const originalResult = await pool.query('SELECT * FROM maestro.project WHERE id = $1 LIMIT 1', [projectId]);
+    if (originalResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Projeto não encontrado para clonagem.' });
+    }
+
+    const original = originalResult.rows[0];
+    const baseProjectName = String(original.project || '').replace(/\s\(\d+\)$/, '').trim();
+
+    const existingNamesResult = await pool.query(
+      `
+        SELECT project
+        FROM maestro.project
+        WHERE LOWER(project) = LOWER($1)
+           OR LOWER(project) LIKE LOWER($2)
+      `,
+      [baseProjectName, `${baseProjectName} (%)`]
+    );
+
+    const usedIndexes = new Set();
+    const escapedBase = baseProjectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const suffixRegex = new RegExp(`^${escapedBase} \\((\\d+)\\)$`, 'i');
+
+    for (const row of existingNamesResult.rows) {
+      const currentName = String(row.project || '').trim();
+      if (currentName.toLowerCase() === baseProjectName.toLowerCase()) {
+        usedIndexes.add(0);
+        continue;
+      }
+
+      const match = currentName.match(suffixRegex);
+      if (match) {
+        usedIndexes.add(Number(match[1]));
+      }
+    }
+
+    let cloneIndex = 1;
+    while (usedIndexes.has(cloneIndex)) {
+      cloneIndex += 1;
+    }
+
+    const clonedProjectName = `${baseProjectName} (${cloneIndex})`;
+
+    const columnsResult = await pool.query(
+      `
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'maestro'
+          AND table_name = 'project'
+          AND column_name <> 'id'
+      `
+    );
+
+    const insertColumns = [];
+    const insertValues = [];
+
+    for (const row of columnsResult.rows) {
+      const column = row.column_name;
+      let value = original[column];
+
+      if (column === 'project') {
+        value = clonedProjectName;
+      }
+
+      if (value === undefined) {
+        continue;
+      }
+
+      insertColumns.push(column);
+      insertValues.push(value);
+    }
+
+    if (insertColumns.length === 0) {
+      return res.status(500).json({ success: false, message: 'Não foi possível montar dados para clonagem.' });
+    }
+
+    const placeholders = insertColumns.map((_, index) => `$${index + 1}`).join(', ');
+    const cloneResult = await pool.query(
+      `
+        INSERT INTO maestro.project (${insertColumns.join(', ')})
+        VALUES (${placeholders})
+        RETURNING id, project, material_type, brand, model, roof_config, total_parts_qty, lid_parts_qty
+      `,
+      insertValues
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: `Projeto clonado com sucesso como ${clonedProjectName}.`,
+      data: cloneResult.rows[0]
+    });
+  } catch (error) {
+    console.error('❌ Erro ao clonar projeto:', error);
+    return res.status(500).json({ success: false, message: `Erro ao clonar projeto: ${error.message}` });
+  }
+};
+
+/**
+ * Exclui projeto por ID
+ */
+export const excluirProject = async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      return res.status(400).json({ success: false, message: 'ID de projeto inválido.' });
+    }
+
+    const deleteResult = await pool.query(
+      `
+        DELETE FROM maestro.project
+        WHERE id = $1
+        RETURNING id, project
+      `,
+      [projectId]
+    );
+
+    if (deleteResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Projeto não encontrado para exclusão.' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Projeto ${deleteResult.rows[0].project} excluído com sucesso.`
+    });
+  } catch (error) {
+    console.error('❌ Erro ao excluir projeto:', error);
+    return res.status(500).json({ success: false, message: `Erro ao excluir projeto: ${error.message}` });
+  }
+};
+
+/**
  * Obtém todas as marcas únicas cadastradas na tabela maestro.project
  * @route GET /api/jira/projects/brands
  */
