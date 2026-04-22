@@ -118,8 +118,6 @@ async function processar() {
 
         const previsaoRaw = fields.customfield_10245;
 
-        console.log(`🔎 Salvando ${key}`);
-
         await salvarOuAtualizar({
           key,
           tipo,
