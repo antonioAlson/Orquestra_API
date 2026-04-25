@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { registrarGeracaoEspelhos } from '../utils/espelhos-logger.js';
+import { decrypt } from '../utils/crypto.js';
 import pool from '../config/database.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -38,9 +39,14 @@ async function getUserJiraCredentials(userId) {
       throw new Error('Credenciais do Jira não configuradas para este usuário. Configure no perfil ou contate o administrador.');
     }
 
+    const apiToken = decrypt(api_token);
+    if (!apiToken) {
+      throw new Error('Falha ao decifrar token Jira. Reconfigure o token em Gerenciar Usuários.');
+    }
+
     return {
       email: email,
-      apiToken: api_token
+      apiToken,
     };
   } catch (error) {
     console.error('❌ Erro ao buscar credenciais do Jira:', error.message);
@@ -898,11 +904,11 @@ export const getJiraIssues = async (req, res) => {
     const mantaBoard = String(req.query.mantaBoard || '').trim();
 
     // Filtro JQL base - incluindo "Recebido Não liberado" para TENSYLON
-    const jqlMantaBase = '(project = MANTA AND status IN ("A Produzir", "Liberado Engenharia"))';
-    const jqlTensylonBase = '(project = TENSYLON AND status IN ("A Produzir", "Liberado Engenharia", "Aguardando Acabamento", "Aguardando Autoclave", "Aguardando Corte", "Aguardando montagem", "🔴RECEBIDO NÃO LIBERADO"))';
+    const jqlMantaBase = '(project = MANTA AND status IN ("A Produzir") AND ("situação[short text]" ~ "🔴RECEBIDO NÃO LIBERADO" OR "situação[short text]" ~ "⚪️RECEBIDO ENCAMINHADO" OR "situação[short text]" ~ "⚫Aguardando entrada" OR "situação[short text]" ~ "🟢RECEBIDO LIBERADO"))';
+    const jqlTensylonBase = '(project = TENSYLON AND status IN ("A Produzir") AND ("situação[short text]" ~ "🔴RECEBIDO NÃO LIBERADO" OR "situação[short text]" ~ "⚪️RECEBIDO ENCAMINHADO" OR "situação[short text]" ~ "⚫Aguardando entrada" OR "situação[short text]" ~ "🟢RECEBIDO LIBERADO"))';
     const escapedMantaBoard = mantaBoard.replace(/"/g, '\\"');
     const jqlMantaComBoard = mantaBoard
-      ? `(project = MANTA AND "fábrica de manta[dropdown]" = "${escapedMantaBoard}" AND status IN ("A Produzir", "Liberado Engenharia"))`
+      ? `(project = MANTA AND "fábrica de manta[dropdown]" = "${escapedMantaBoard}" AND status IN ("A Produzir"))`
       : jqlMantaBase;
 
     let jql = `${jqlMantaComBoard} OR ${jqlTensylonBase}`;

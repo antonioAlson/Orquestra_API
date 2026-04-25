@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { query } from '../config/database.js';
+import { invalidateCache } from '../services/jiraService.js';
 
 /**
  * =========================
@@ -15,6 +16,14 @@ const IV_LENGTH = 12;
 if (!SECRET || SECRET.length !== 64) {
   throw new Error('JIRA_TOKEN_SECRET must be 64 hex characters (32 bytes)');
 }
+
+const encrypt = (text) => {
+  if (!text) return null;
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(SECRET, 'hex'), iv);
+  const encrypted = Buffer.concat([cipher.update(Buffer.from(text)), cipher.final()]);
+  return iv.toString('hex') + ':' + encrypted.toString('hex');
+};
 
 const decrypt = (text) => {
   try {
@@ -403,12 +412,14 @@ export const updateUser = async (req, res) => {
 
     // jira token opcional
     let updatedJiraToken = currentUser.api_token;
+    let jiraTokenChanged = false;
     if (jiraToken !== undefined) {
       if (jiraToken === '') {
         // NÃO ALTERA
         updatedJiraToken = currentUser.api_token;
       } else {
         updatedJiraToken = encrypt(jiraToken);
+        jiraTokenChanged = true;
       }
     }
 
@@ -428,6 +439,10 @@ export const updateUser = async (req, res) => {
        RETURNING id, name, email, menu_access, created_at, updated_at`,
       [updatedName, updatedEmail, updatedPassword, updatedJiraToken, userId]
     );
+
+    if (jiraTokenChanged) {
+      invalidateCache(userId);
+    }
 
     res.json({
       success: true,

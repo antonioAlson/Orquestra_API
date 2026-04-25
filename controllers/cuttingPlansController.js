@@ -62,8 +62,8 @@ export const criarProjectComPlanos = async (req, res) => {
       await client.query(
         `INSERT INTO maestro.cutting_plan
            (project_id, plate_width, plate_height, linear_meters, square_meters,
-            notes, plate_consumption, attachments, reviews)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            notes, plate_consumption, reviews)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           projectId,
           Number(plan.plate_width) || 0,
@@ -72,7 +72,6 @@ export const criarProjectComPlanos = async (req, res) => {
           JSON.stringify(plan.square_meters || {}),
           String(plan.notes || ''),
           JSON.stringify(plan.plate_consumption || {}),
-          JSON.stringify(plan.attachments || []),
           JSON.stringify(plan.reviews || { cutting: false, labeling: false, ki_Layout: false, nesting_report: false, folder_template: false })
         ]
       );
@@ -278,7 +277,6 @@ export const atualizarPlanoDeCorte = async (req, res) => {
 
     const fields = {};
     if (body.reviews !== undefined) fields.reviews = JSON.stringify(body.reviews);
-    if (body.attachments !== undefined) fields.attachments = JSON.stringify(body.attachments);
     if (body.notes !== undefined) fields.notes = String(body.notes);
     if (body.plate_consumption !== undefined) fields.plate_consumption = JSON.stringify(body.plate_consumption);
     if (body.linear_meters !== undefined) fields.linear_meters = JSON.stringify(body.linear_meters);
@@ -324,8 +322,8 @@ export const adicionarPlanoDeCorte = async (req, res) => {
     const result = await pool.query(
       `INSERT INTO maestro.cutting_plan
          (project_id, plate_width, plate_height, linear_meters, square_meters,
-          notes, plate_consumption, attachments, reviews)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          notes, plate_consumption, reviews)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
       [
         projectId,
@@ -335,7 +333,6 @@ export const adicionarPlanoDeCorte = async (req, res) => {
         JSON.stringify(plan.square_meters || {}),
         String(plan.notes || ''),
         JSON.stringify(plan.plate_consumption || {}),
-        JSON.stringify(plan.attachments || []),
         JSON.stringify(plan.reviews || { cutting: false, labeling: false, ki_Layout: false, nesting_report: false, folder_template: false })
       ]
     );
@@ -394,8 +391,8 @@ export const clonarProjectComPlanos = async (req, res) => {
       await client.query(
         `INSERT INTO maestro.cutting_plan
            (project_id, plate_width, plate_height, linear_meters, square_meters,
-            notes, plate_consumption, attachments, reviews)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            notes, plate_consumption, reviews)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           newId,
           plan.plate_width,
@@ -404,7 +401,6 @@ export const clonarProjectComPlanos = async (req, res) => {
           JSON.stringify(plan.square_meters || {}),
           plan.notes || '',
           JSON.stringify(plan.plate_consumption || {}),
-          JSON.stringify([]),
           JSON.stringify({ cutting: false, labeling: false, ki_Layout: false, nesting_report: false, folder_template: false }),
         ]
       );

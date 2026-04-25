@@ -115,6 +115,18 @@ export async function ensureDatabaseCompatibility() {
   `, 'maestro.users.updated_at');
 
   await runCompatibilityQuery(`
+    ALTER TABLE IF EXISTS maestro.users
+    ADD COLUMN IF NOT EXISTS api_token TEXT;
+  `, 'maestro.users.api_token');
+
+  // VARCHAR(255) é curta demais para tokens Jira longos (~200 chars) +
+  // overhead da criptografia AES-GCM (~2× em hex). Converter para TEXT.
+  await runCompatibilityQuery(`
+    ALTER TABLE IF EXISTS maestro.users
+    ALTER COLUMN api_token TYPE TEXT;
+  `, 'maestro.users.api_token TYPE TEXT');
+
+  await runCompatibilityQuery(`
     ALTER TABLE IF EXISTS maestro.project
     ADD COLUMN IF NOT EXISTS linear_meters JSONB NOT NULL DEFAULT '{"8C": "", "9C": "", "11C": ""}'::jsonb;
   `, 'maestro.project.linear_meters');
