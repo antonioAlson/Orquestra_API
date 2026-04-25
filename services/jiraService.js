@@ -153,6 +153,31 @@ export async function attachToJiraIssue(userId, issueKey, filename, pdfBuffer) {
 }
 
 /**
+ * Update specific fields on a Jira issue (e.g. custom number fields).
+ *
+ * @param {number} userId
+ * @param {string} issueKey  - e.g. "MANTA-31516"
+ * @param {Object} fields    - key/value map of Jira field IDs to values
+ * @returns {Promise<void>}
+ */
+export async function updateJiraIssueFields(userId, issueKey, fields) {
+  const jiraUrl = process.env.JIRA_URL;
+  if (!jiraUrl) throw new Error('JIRA_URL não configurado');
+
+  const { email, apiToken } = await getCredentials(userId);
+  const authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`;
+
+  await axios.put(`${jiraUrl}/rest/api/3/issue/${issueKey}`, { fields }, {
+    headers: {
+      Authorization: authHeader,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    timeout: 15_000,
+  });
+}
+
+/**
  * Force-expire all cache entries for a user (e.g. after token update).
  * @param {number} userId
  */

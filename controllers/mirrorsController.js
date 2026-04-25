@@ -5,7 +5,8 @@ import { dirname } from 'path';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import QRCode from 'qrcode';
 
-import { fetchJiraIssues, fetchAramidaIssues, fetchTensylonIssues, attachToJiraIssue } from '../services/jiraService.js';
+import JSZip from 'jszip';
+import { fetchJiraIssues, fetchAramidaIssues, fetchTensylonIssues, attachToJiraIssue, updateJiraIssueFields } from '../services/jiraService.js';
 import { fetchAllProjects, fetchProjectsByIds } from '../services/mirrorProjectRepository.js';
 import { classifyAll } from '../services/classifierService.js';
 
@@ -182,40 +183,60 @@ export const generateOS = async (req, res) => {
     // Lookup by id — iterate over the original projects array so that
     // repeated IDs (different jiraKey/os_number) each produce their own pages.
     const rowMap = new Map(dbRows.map(r => [r.id, r]));
-
-    const mergedPdf = await PDFDocument.create();
+    const zip = new JSZip();
 
     for (const entry of projects) {
       const proj = rowMap.get(Number(entry.id));
       if (!proj) continue;
       const meta = { osNumber: String(entry.os_number || entry.osNumber || '') };
+      const folderName = `OS-${meta.osNumber || entry.jiraKey}`;
+      const folder = zip.folder(folderName);
 
-      // Build an individual PDF for this OS entry.
+      // Build individual PDF for this OS entry.
       const singlePdf = await PDFDocument.create();
       await appendFirstPage(singlePdf, proj, meta, 1);
       await appendInfoProjectPages(singlePdf, proj);
       await appendLastPage(singlePdf, proj, meta);
-
-      // Copy pages into the merged download PDF.
       const singleBytes = await singlePdf.save();
-      const singleLoaded = await PDFDocument.load(singleBytes);
-      const copiedPages = await mergedPdf.copyPages(singleLoaded, singleLoaded.getPageIndices());
-      copiedPages.forEach(p => mergedPdf.addPage(p));
 
-      // Attach the individual PDF to the corresponding Jira card.
-      const filename = `OS-${meta.osNumber || entry.jiraKey}.pdf`;
+      // Add PDF to ZIP folder.
+      folder.file(`${folderName}.pdf`, Buffer.from(singleBytes));
+
+      // Add .txt attachments with XXXXX → OS number substitution.
+      const seenFileIds = new Set();
+      for (const plan of (proj.cutting_plans || [])) {
+        for (const att of (plan.attachments || [])) {
+          if (!att.file?.name?.toLowerCase().endsWith('.txt')) continue;
+          if (seenFileIds.has(att.file.id)) continue;
+          seenFileIds.add(att.file.id);
+          if (!att.file.path || !fs.existsSync(att.file.path)) continue;
+          try {
+            const content = await fs.promises.readFile(att.file.path, 'utf8');
+            folder.file(
+              `${meta.osNumber}-${att.file.name}`,
+              content.replace(/XXXXX/g, meta.osNumber),
+            );
+          } catch (err) {
+            console.warn(`[Mirrors] Falha ao ler txt ${att.file.name}:`, err.message);
+          }
+        }
+      }
+
+      // Attach individual PDF to Jira.
+      const filename = `${folderName}.pdf`;
       try {
         await attachToJiraIssue(req.user.id, entry.jiraKey, filename, Buffer.from(singleBytes));
         console.log(`[Mirrors] Anexado ${filename} ao card ${entry.jiraKey}`);
       } catch (err) {
         console.warn(`[Mirrors] Falha ao anexar ${filename} ao card ${entry.jiraKey}:`, err.message);
       }
+
     }
 
-    const pdfBytes = await mergedPdf.save();
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="OS-${Date.now()}.pdf"`);
-    return res.end(Buffer.from(pdfBytes));
+    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="OS-${Date.now()}.zip"`);
+    return res.end(zipBuffer);
   } catch (error) {
     console.error('[Mirrors] generateOS error:', error);
     return res.status(500).json({ success: false, message: error.message });
