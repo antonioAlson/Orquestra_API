@@ -144,8 +144,63 @@ export const getTensylonProjects = async (req, res) => {
 // ─── POST /api/mirrors/generate-os ──────────────────────────────────────────
 //
 // Body: { projects: [{ id, jiraKey, os_number }] }
-// Returns: application/pdf blob
+// Returns: application/zip blob with one folder per OS
 //
+// Each folder contains:
+//   OS-XXXXX.pdf          — cover + InfoProject pages + back cover
+//   XXXXX-<name>.txt      — CNC files with XXXXX replaced by the OS number
+//
+// RELATORIO.txt is always included and lists every step taken per OS.
+// Flow per OS: Fase 1 (validação) → Fase 2 (geração PDF+TXT) → Fase 3 (Jira)
+// Any error in Fase 1 or 2 aborts that OS and rolls back. Fase 3 side-effects
+// (m² fields, status transition) are non-fatal — log [AVS] and continue.
+//
+
+// Retry wrapper for unstable I/O and external API calls.
+async function retry(fn, attempts = 3, delayMs = 300) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try { return await fn(); } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  throw lastErr;
+}
+
+// Phase 1: verify every referenced file has a path and exists on disk.
+// Returns array of structured error objects; empty = project is ready to generate.
+function validateProjectFiles(proj) {
+  const seenIds = new Set();
+  const errors  = [];
+  let validInfoCount = 0;
+
+  for (const plan of (proj.cutting_plans || [])) {
+    for (const att of (plan.attachments || [])) {
+      if (!att.file?.id || seenIds.has(att.file.id)) continue;
+      seenIds.add(att.file.id);
+
+      if (!att.file.path) {
+        errors.push({ type: 'VALIDATION_ERROR', file: att.file.name || '?', reason: 'sem path no banco' });
+        continue;
+      }
+
+      if (!fs.existsSync(att.file.path)) {
+        errors.push({ type: 'FILE_MISSING', file: att.file.name || '?', path: att.file.path, reason: 'arquivo não encontrado no filesystem' });
+        continue;
+      }
+
+      if (att.type === 'infoproject') validInfoCount++;
+    }
+  }
+
+  if (validInfoCount === 0) {
+    errors.push({ type: 'VALIDATION_ERROR', file: null, reason: 'nenhum InfoProject válido e acessível encontrado' });
+  }
+
+  return errors;
+}
+
 export const generateOS = async (req, res) => {
   try {
     const { projects } = req.body;
@@ -153,89 +208,161 @@ export const generateOS = async (req, res) => {
       return res.status(400).json({ success: false, message: '"projects" array é obrigatório.' });
     }
 
-    // Deduplicate IDs only for the DB query — the original array may repeat
-    // the same ID for different jiraKeys (same physical project, multiple OS).
     const uniqueIds = [...new Set(
-      projects
-        .map(p => Number(p.id))
-        .filter(id => Number.isFinite(id) && id > 0)
+      projects.map(p => Number(p.id)).filter(id => Number.isFinite(id) && id > 0)
     )];
-
     if (!uniqueIds.length) {
       return res.status(400).json({ success: false, message: 'IDs inválidos.' });
     }
 
     const dbRows = await fetchProjectsByIds(uniqueIds);
-
-    // Validate every DB project has at least one infoproject attachment.
-    for (const proj of dbRows) {
-      const hasInfoProject = (proj.cutting_plans || []).some(plan =>
-        (plan.attachments || []).some(a => a.type === 'infoproject')
-      );
-      if (!hasInfoProject) {
-        return res.status(422).json({
-          success: false,
-          message: `Projeto "${proj.project}" não possui InfoProject anexado.`,
-        });
-      }
-    }
-
-    // Lookup by id — iterate over the original projects array so that
-    // repeated IDs (different jiraKey/os_number) each produce their own pages.
     const rowMap = new Map(dbRows.map(r => [r.id, r]));
-    const zip = new JSZip();
-    const failures = [];
+
+    const zip          = new JSZip();
+    const failures     = [];
     const fieldWarnings = [];
+    const reportLines  = [
+      'RELATÓRIO DE GERAÇÃO DE OS',
+      `Gerado em: ${new Date().toLocaleString('pt-BR')}`,
+      `Total de OS: ${projects.length}`,
+      '─'.repeat(60),
+    ];
 
     for (const entry of projects) {
-      const proj = rowMap.get(Number(entry.id));
-      if (!proj) continue;
-
-      const meta = { osNumber: String(entry.os_number || entry.osNumber || '') };
+      const proj       = rowMap.get(Number(entry.id));
+      const meta       = { osNumber: String(entry.os_number || entry.osNumber || '') };
       const folderName = `OS-${meta.osNumber || entry.jiraKey}`;
       let attachmentIds = [];
-      let phase = 'geração do PDF';
+      let phase        = 'validação';
+
+      const log = [
+        '',
+        `OS: ${meta.osNumber}  |  Card: ${entry.jiraKey}`,
+        `Projeto: ${proj?.project || '?'}  |  Modelo: ${proj?.model || '?'}`,
+        `Material: ${proj?.material_type || '?'}`,
+        '',
+      ];
+
+      // ── Fase 0: existência no banco ────────────────────────────────────────
+      if (!proj) {
+        const msg = `ID ${entry.id} não encontrado no banco`;
+        log.push(`  [ERR] ${msg}`);
+        log.push('  → RESULTADO: FALHA');
+        reportLines.push(...log, '─'.repeat(60));
+        failures.push({ jiraKey: entry.jiraKey, os_number: meta.osNumber, phase, message: msg, type: 'VALIDATION_ERROR' });
+        continue;
+      }
+
+      // ── Fase 1: validação de arquivos (fail-fast antes de gerar qualquer coisa) ──
+      const validationErrs = validateProjectFiles(proj);
+      if (validationErrs.length) {
+        for (const e of validationErrs) {
+          const detail = e.path ? `${e.reason} — path verificado: ${e.path}` : e.reason;
+          log.push(`  [ERR] ${e.type}: "${e.file}" — ${detail}`);
+        }
+        log.push('  → RESULTADO: FALHA (validação)');
+        reportLines.push(...log, '─'.repeat(60));
+        failures.push({
+          jiraKey: entry.jiraKey,
+          os_number: meta.osNumber,
+          phase,
+          message: validationErrs.map(e => `${e.file ?? 'InfoProject'}: ${e.reason}`).join('; '),
+          type: 'VALIDATION_ERROR',
+          errors: validationErrs,
+        });
+        continue;
+      }
+      log.push('  [OK] Fase 1 — validação de arquivos passou');
 
       try {
         const folder = zip.folder(folderName);
 
-        // Build individual PDF for this OS entry.
+        // ── Fase 2a: Capa ────────────────────────────────────────────────────
+        phase = 'geração da capa';
         const singlePdf = await PDFDocument.create();
         await appendFirstPage(singlePdf, proj, meta, 1);
-        await appendInfoProjectPages(singlePdf, proj);
-        await appendLastPage(singlePdf, proj, meta);
-        const singleBytes = await singlePdf.save();
+        log.push('  [OK] Capa gerada');
 
-        // Add PDF to ZIP folder.
-        folder.file(`${folderName}.pdf`, Buffer.from(singleBytes));
+        // ── Fase 2b: páginas InfoProject ─────────────────────────────────────
+        phase = 'mesclagem InfoProject';
+        const seenInfoIds  = new Set();
+        let infoPagesTotal = 0;
 
-        // Add .txt attachments with XXXXX → OS number substitution.
-        const seenFileIds = new Set();
         for (const plan of (proj.cutting_plans || [])) {
-          for (const att of (plan.attachments || [])) {
-            if (!att.file?.name?.toLowerCase().endsWith('.txt')) continue;
-            if (seenFileIds.has(att.file.id)) continue;
-            seenFileIds.add(att.file.id);
-            if (!att.file.path || !fs.existsSync(att.file.path)) continue;
-            try {
-              const content = await fs.promises.readFile(att.file.path, 'utf8');
-              folder.file(
-                `${meta.osNumber}-${att.file.name}`,
-                content.replace(/XXXXX/g, meta.osNumber),
-              );
-            } catch (err) {
-              console.warn(`[Mirrors] Falha ao ler txt ${att.file.name}:`, err.message);
+          for (const infoAtt of (plan.attachments || []).filter(a => a.type === 'infoproject')) {
+            if (seenInfoIds.has(infoAtt.file?.id)) {
+              log.push(`  [SKP] InfoProject "${infoAtt.file?.name}": duplicado`);
+              continue;
             }
+            seenInfoIds.add(infoAtt.file?.id);
+
+            // Existence guaranteed by Phase 1 — throw if somehow gone
+            if (!infoAtt.file?.path || !fs.existsSync(infoAtt.file.path)) {
+              throw new Error(`InfoProject "${infoAtt.file?.name}" não encontrado: ${infoAtt.file?.path}`);
+            }
+
+            const bytes   = await retry(() => fs.promises.readFile(infoAtt.file.path));
+            const infoPdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+            const copied  = await singlePdf.copyPages(infoPdf, infoPdf.getPageIndices());
+            copied.forEach(p => singlePdf.addPage(p));
+            infoPagesTotal += copied.length;
+            log.push(`  [OK] InfoProject "${infoAtt.file.name}": ${copied.length} pág(s) incluída(s)`);
           }
         }
 
-        // ── Phase: attach PDF to Jira (fatal — rolls back on failure) ─────────
-        phase = 'envio do PDF ao Jira';
-        attachmentIds = await attachToJiraIssue(req.user.id, entry.jiraKey, `${folderName}.pdf`, Buffer.from(singleBytes));
-        console.log(`[Mirrors] Anexado ${folderName}.pdf ao card ${entry.jiraKey}`);
+        if (infoPagesTotal === 0) {
+          throw new Error('Nenhuma página InfoProject foi incluída no PDF');
+        }
+        log.push(`  [OK] InfoProject total: ${infoPagesTotal} pág(s)`);
 
-        // ── Phase: update m² custom fields (non-fatal — PDF stays attached) ───
-        // Build sqm from cutting_plans, skipping empty and zero values.
+        // ── Fase 2c: Contracapa ──────────────────────────────────────────────
+        phase = 'geração da contracapa';
+        await appendLastPage(singlePdf, proj, meta);
+        log.push('  [OK] Contracapa gerada');
+
+        const singleBytes = await singlePdf.save();
+        folder.file(`${folderName}.pdf`, Buffer.from(singleBytes));
+        log.push(`  [OK] PDF salvo no ZIP: ${folderName}.pdf`);
+
+        // ── Fase 2d: arquivos TXT (opcional — aviso, não falha) ──────────────
+        phase = 'inclusão de arquivos TXT';
+        const seenFileIds = new Set();
+        let txtCount = 0;
+
+        for (const plan of (proj.cutting_plans || [])) {
+          for (const att of (plan.attachments || [])) {
+            if (!att.file?.name?.toLowerCase().endsWith('.txt')) continue;
+            if (seenFileIds.has(att.file.id)) {
+              log.push(`  [SKP] TXT "${att.file.name}": duplicado`);
+              continue;
+            }
+            seenFileIds.add(att.file.id);
+
+            if (!att.file.path || !fs.existsSync(att.file.path)) {
+              log.push(`  [AVS] TXT "${att.file.name}": não encontrado — ${att.file.path}`);
+              continue;
+            }
+
+            const content  = await retry(() => fs.promises.readFile(att.file.path, 'utf8'));
+            const destName = `${meta.osNumber}-${att.file.name}`;
+            folder.file(destName, content.replace(/XXXXX/g, meta.osNumber));
+            txtCount++;
+            log.push(`  [OK] TXT incluído: ${destName}`);
+          }
+        }
+
+        if (txtCount === 0) log.push('  [AVS] Nenhum arquivo TXT encontrado para esta OS');
+
+        // ── Fase 3a: anexar PDF ao Jira (obrigatório — falha desfaz tudo) ────
+        phase = 'envio do PDF ao Jira';
+        attachmentIds = await retry(
+          () => attachToJiraIssue(req.user.id, entry.jiraKey, `${folderName}.pdf`, Buffer.from(singleBytes)),
+          3, 500
+        );
+        log.push(`  [OK] PDF anexado ao card Jira (IDs: ${attachmentIds.join(', ')})`);
+
+        // ── Fase 3b: atualizar campos m² (não-fatal) ─────────────────────────
+        phase = 'atualização de campos m²';
         const sqm = {};
         for (const plan of (proj.cutting_plans || [])) {
           for (const [k, v] of Object.entries(plan.square_meters || {})) {
@@ -246,119 +373,78 @@ export const generateOS = async (req, res) => {
         }
 
         const isTensylon = String(proj.material_type || '').toUpperCase() === 'TENSYLON';
-        const sqmFields = {};
-
-        // Jira stores these as text fields in Brazilian format ("998,2").
-        // Sending a JS float would be silently ignored — must send a string.
-        const toJiraStr = n => String(n).replace('.', ',');
+        const toJiraStr  = n => String(n).replace('.', ',');
+        const sqmFields  = {};
 
         if (isTensylon) {
           const f = process.env.JIRA_FIELD_SQM_TENSYLON;
           if (f && sqm.tensylon != null) sqmFields[f] = toJiraStr(sqm.tensylon);
         } else {
-          if (sqm['8C'] != null) {
-            const v = toJiraStr(sqm['8C']);
-            sqmFields.customfield_13625 = v;
-            sqmFields.customfield_13633 = v;
-          }else{
-            sqmFields.customfield_13625 = 0;
-            sqmFields.customfield_13633 = 0;
-          }
-          if (sqm['9C'] != null) {
-            const v = toJiraStr(sqm['9C']);
-            sqmFields.customfield_13626 = v;
-            sqmFields.customfield_13632 = v;
-          }else{
-            sqmFields.customfield_13626 = 0;
-            sqmFields.customfield_13632 = 0;
-          }
-          if (sqm['11C'] != null) {
-            const v = toJiraStr(sqm['11C']);
-            sqmFields.customfield_13627 = v;
-            sqmFields.customfield_13631 = v;
-          }else{
-            sqmFields.customfield_13627 = 0;
-            sqmFields.customfield_13631 = 0;
-
-          }
+          if (sqm['8C']  != null) { const v = toJiraStr(sqm['8C']);  sqmFields.customfield_13625 = v; sqmFields.customfield_13633 = v; }
+          if (sqm['9C']  != null) { const v = toJiraStr(sqm['9C']);  sqmFields.customfield_13626 = v; sqmFields.customfield_13632 = v; }
+          if (sqm['11C'] != null) { const v = toJiraStr(sqm['11C']); sqmFields.customfield_13627 = v; sqmFields.customfield_13631 = v; }
         }
 
         if (Object.keys(sqmFields).length) {
           try {
             await updateJiraIssueFields(req.user.id, entry.jiraKey, sqmFields);
-            console.log(`[Mirrors] Campos m² atualizados no card ${entry.jiraKey}:`, sqmFields);
+            log.push(`  [OK] Campos m² atualizados: ${JSON.stringify(sqmFields)}`);
           } catch (fieldErr) {
             const fieldMsg = fieldErr?.response?.data
               ? JSON.stringify(fieldErr.response.data)
               : fieldErr.message;
-            console.warn(`[Mirrors] Falha ao atualizar campos m² no card ${entry.jiraKey}:`, fieldMsg);
-            fieldWarnings.push({
-              jiraKey: entry.jiraKey,
-              os_number: meta.osNumber,
-              message: fieldMsg,
-              fields: Object.keys(sqmFields),
-            });
+            log.push(`  [AVS] Campos m² NÃO atualizados: ${fieldMsg}`);
+            fieldWarnings.push({ jiraKey: entry.jiraKey, os_number: meta.osNumber, message: fieldMsg, fields: Object.keys(sqmFields), type: 'JIRA_ERROR' });
           }
         } else {
-          console.log(`[Mirrors] Nenhum valor de m² disponível para o card ${entry.jiraKey} — campos não atualizados`);
+          log.push('  [AVS] Sem valores m² no banco — campos Jira não atualizados');
+          log.push(`        square_meters encontrados: ${JSON.stringify(sqm)}`);
         }
 
-        // ── Phase: transition card to "Liberado Engenharia" (non-fatal) ────────
+        // ── Fase 3c: transição de status (não-fatal) ─────────────────────────
+        phase = 'transição de status Jira';
         try {
           const tr = await transitionJiraIssue(req.user.id, entry.jiraKey, 'Liberado Engenharia', 'A Produzir');
           if (tr.changed) {
-            console.log(`[Mirrors] Card ${entry.jiraKey} movido para "Liberado Engenharia"`);
+            log.push(`  [OK] Card movido para "Liberado Engenharia" (era: "${tr.from}")`);
           } else if (tr.reason === 'already-in-target') {
-            console.log(`[Mirrors] Card ${entry.jiraKey} já estava em "Liberado Engenharia"`);
+            log.push('  [OK] Card já estava em "Liberado Engenharia"');
           } else {
-            console.warn(`[Mirrors] Card ${entry.jiraKey} não movido — status atual: "${tr.from}"`);
+            log.push(`  [AVS] Card não movido — status atual: "${tr.from}" (esperado: "A Produzir")`);
           }
         } catch (trErr) {
-          console.warn(`[Mirrors] Falha ao mover card ${entry.jiraKey} para "Liberado Engenharia":`, trErr.message);
+          log.push(`  [AVS] Falha na transição de status: ${trErr.message}`);
         }
 
+        log.push('  → RESULTADO: SUCESSO');
+
       } catch (err) {
-        // Rollback: remove any PDF already attached to Jira for this entry.
+        // Rollback: remove quaisquer anexos já enviados ao Jira
         for (const attId of attachmentIds) {
           try {
             await deleteJiraAttachment(req.user.id, attId);
-            console.log(`[Mirrors] Rollback: anexo ${attId} removido do card ${entry.jiraKey}`);
+            log.push(`  [RLB] Rollback: anexo ${attId} removido do Jira`);
           } catch (delErr) {
-            console.warn(`[Mirrors] Falha no rollback do anexo ${attId}:`, delErr.message);
+            log.push(`  [RLB] Rollback falhou para anexo ${attId}: ${delErr.message}`);
           }
         }
-
-        // Remove this entry's folder from the ZIP.
         zip.remove(folderName);
 
-        failures.push({ jiraKey: entry.jiraKey, os_number: meta.osNumber, phase, message: err.message });
-        console.warn(`[Mirrors] Falha na OS ${entry.jiraKey} (fase: ${phase}):`, err.message);
+        failures.push({ jiraKey: entry.jiraKey, os_number: meta.osNumber, phase, message: err.message, type: 'PROCESSING_ERROR' });
+        log.push(`  [ERR] Fase "${phase}": ${err.message}`);
+        log.push('  → RESULTADO: FALHA');
       }
+
+      reportLines.push(...log, '─'.repeat(60));
     }
 
-    // If every entry failed, return a structured error instead of an empty ZIP.
     const successCount = projects.length - failures.length;
     if (successCount === 0) {
       return res.status(422).json({ success: false, message: 'Todas as OS falharam ao ser geradas.', failures });
     }
 
-    // Include a plain-text error log inside the ZIP when there are any failures or warnings.
-    if (failures.length > 0 || fieldWarnings.length > 0) {
-      const lines = [`Relatório — ${new Date().toLocaleString('pt-BR')}`, ''];
-      if (failures.length > 0) {
-        lines.push('=== FALHAS (OS não geradas) ===');
-        failures.forEach(f => lines.push(`OS ${f.os_number} (${f.jiraKey})\n  Fase: ${f.phase}\n  Erro: ${f.message}`));
-        lines.push('');
-      }
-      if (fieldWarnings.length > 0) {
-        lines.push('=== AVISOS (PDF gerado, mas campos m² não atualizados no Jira) ===');
-        lines.push('Verifique os IDs dos campos em: GET /api/mirrors/jira-fields');
-        fieldWarnings.forEach(w => lines.push(
-          `OS ${w.os_number} (${w.jiraKey})\n  Campos: ${w.fields.join(', ')}\n  Erro: ${w.message}`
-        ));
-      }
-      zip.file('ERROS.txt', lines.join('\n'));
-    }
+    reportLines.push('', `Concluído: ${successCount} sucesso(s), ${failures.length} falha(s), ${fieldWarnings.length} aviso(s) de campos`);
+    zip.file('RELATORIO.txt', reportLines.join('\n'));
 
     const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
     res.setHeader('Content-Type', 'application/zip');
@@ -573,20 +659,6 @@ async function appendFirstPage(mergedPdf, project, meta, packageNumber) {
   mergedPdf.addPage(copied);
 }
 
-async function appendInfoProjectPages(mergedPdf, project) {
-  for (const plan of (project.cutting_plans || [])) {
-    const infoAtt = (plan.attachments || []).find(a => a.type === 'infoproject');
-    if (!infoAtt?.file?.path || !fs.existsSync(infoAtt.file.path)) continue;
-    try {
-      const bytes = await fs.promises.readFile(infoAtt.file.path);
-      const infoPdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
-      const copied = await mergedPdf.copyPages(infoPdf, infoPdf.getPageIndices());
-      copied.forEach(p => mergedPdf.addPage(p));
-    } catch (err) {
-      console.warn('[Mirrors] InfoProject merge skipped:', err.message);
-    }
-  }
-}
 
 async function appendLastPage(mergedPdf, project, meta) {
   const doc = await PDFDocument.create();
