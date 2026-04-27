@@ -1,8 +1,9 @@
 import express from 'express';
 import multer from 'multer';
-import { 
-  getJiraIssues, 
-  getContecIssues, 
+import {
+  getJiraIssues,
+  getContecIssues,
+  getPCPRelatorio,
   reprogramarEmMassa,
   reprogramarDatasComtec,
   atualizarDatasIndividuais,
@@ -37,6 +38,9 @@ router.get('/issues', authenticate, getJiraIssues);
 
 // Buscar issues CONTEC (Land Rover, Toyota, Jaguar)
 router.get('/contec', authenticate, getContecIssues);
+
+// Relatório geral de PCP (MANTA + TENSYLON, sem filtro de marca ou situação)
+router.get('/pcp-relatorio', authenticate, getPCPRelatorio);
 
 // Reprogramar múltiplas issues em massa
 router.post('/reprogramar-massa', authenticate, reprogramarEmMassa);

@@ -3514,3 +3514,192 @@ export const reprogramarDatasComtec = async (req, res) => {
     });
   }
 };
+
+/**
+ * Busca todas as issues para o relatório geral de PCP
+ */
+export const getPCPRelatorio = async (req, res) => {
+  try {
+    console.log('🔍 Iniciando busca de issues para Relatório PCP...');
+
+    let credentials;
+    try {
+      credentials = await getUserJiraCredentials(req.user.id);
+    } catch (credError) {
+      return res.status(400).json({
+        success: false,
+        message: `Erro ao buscar credenciais: ${credError.message}`
+      });
+    }
+
+    const { email, apiToken } = credentials;
+    const jiraUrl = process.env.JIRA_URL;
+
+    if (!jiraUrl) {
+      return res.status(500).json({
+        success: false,
+        message: 'JIRA_URL não configurado no servidor. Contate o administrador.'
+      });
+    }
+
+    if (!email || !apiToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Credenciais do Jira não configuradas para seu usuário. Configure no perfil.'
+      });
+    }
+
+    const jqlMantaBase = '(project = MANTA AND status IN ("A Produzir", "Liberado Engenharia"))';
+    const jqlTensylonBase = '(project = TENSYLON AND status IN ("A Produzir", "Liberado Engenharia", "Aguardando Acabamento", "Aguardando Autoclave", "Aguardando Corte", "Aguardando montagem", "🔴RECEBIDO NÃO LIBERADO"))';
+    const jql = `${jqlMantaBase} OR ${jqlTensylonBase}`;
+
+    const url = `${jiraUrl}/rest/api/3/search/jql`;
+    const auth = Buffer.from(`${email}:${apiToken}`).toString('base64');
+
+    console.log('🔍 [PCP RELATORIO] JQL:', jql);
+
+    let allIssues = [];
+    let nextPageToken = null;
+    let pageCount = 0;
+
+    while (true) {
+      pageCount++;
+      console.log(`📄 [PCP RELATORIO PÁGINA ${pageCount}] Buscando issues...`);
+
+      const params = {
+        jql,
+        maxResults: 100,
+        fields: [
+          'issuetype',
+          'summary',
+          'status',
+          'customfield_10039',
+          'customfield_11298',
+          'customfield_10245',
+          'customfield_11353'
+        ].join(',')
+      };
+
+      if (nextPageToken) {
+        params.nextPageToken = nextPageToken;
+      }
+
+      const response = await axios.get(url, {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Basic ${auth}`
+        },
+        params
+      });
+
+      const issues = response.data.issues || [];
+      const isLast = !!response.data.isLast;
+
+      console.log(`✅ [PCP RELATORIO PÁGINA ${pageCount}] Recebidas ${issues.length} issues`);
+
+      allIssues = [...allIssues, ...issues];
+
+      if (isLast) break;
+
+      nextPageToken = response.data.nextPageToken || null;
+      if (!nextPageToken) {
+        console.log('⚠️ [PCP RELATORIO] nextPageToken ausente; encerrando paginação.');
+        break;
+      }
+    }
+
+    console.log(`🎯 [PCP RELATORIO] Total de issues coletadas: ${allIssues.length}`);
+
+    const processedData = allIssues.map((issue) => {
+      const fields = issue.fields;
+
+      let situacao = '';
+      const situacaoRaw = fields.customfield_10039;
+      if (situacaoRaw && typeof situacaoRaw === 'object' && situacaoRaw.value) {
+        situacao = situacaoRaw.value;
+      } else if (situacaoRaw) {
+        situacao = situacaoRaw;
+      }
+
+      let veiculo = '';
+      const veiculoRaw = fields.customfield_11298;
+      if (veiculoRaw && typeof veiculoRaw === 'object' && veiculoRaw.value) {
+        veiculo = veiculoRaw.value;
+      } else if (veiculoRaw) {
+        veiculo = veiculoRaw;
+      }
+
+      let previsao = '';
+      const previsaoRaw = fields.customfield_10245;
+      if (previsaoRaw) {
+        previsao = formatJiraDate(previsaoRaw);
+      }
+
+      let numeroProjeto = '';
+      const numeroProjetoRaw = fields.customfield_11353;
+      if (numeroProjetoRaw && typeof numeroProjetoRaw === 'object' && numeroProjetoRaw.value) {
+        numeroProjeto = String(numeroProjetoRaw.value).trim();
+      } else if (numeroProjetoRaw) {
+        numeroProjeto = String(numeroProjetoRaw).trim();
+      }
+
+      if (!numeroProjeto) {
+        const resumoValue = String(fields.summary || '').trim();
+        const projetoMatch = resumoValue.match(/\b[A-Z]\d{1,2}\.\d{6,8}\.[A-Z]{2}\b/i);
+        numeroProjeto = projetoMatch ? projetoMatch[0].toUpperCase() : '';
+      }
+
+      const resumoTexto = fields.summary || '';
+      const numerosEncontrados = resumoTexto.match(/\d+/g);
+      const resumoNumero = numerosEncontrados ? parseInt(numerosEncontrados[0], 10) : 0;
+
+      return {
+        key: issue.key,
+        resumo: resumoNumero,
+        status: fields.status?.name || '',
+        situacao,
+        veiculo,
+        previsao,
+        numeroProjeto: numeroProjeto || '-'
+      };
+    });
+
+    processedData.sort((a, b) => {
+      const veiculoA = (a.veiculo || '').toLowerCase();
+      const veiculoB = (b.veiculo || '').toLowerCase();
+      return veiculoA.localeCompare(veiculoB);
+    });
+
+    console.log(`✅ [PCP RELATORIO] ${processedData.length} issues processadas`);
+
+    return res.json({
+      success: true,
+      total: allIssues.length,
+      filtered: processedData.length,
+      data: processedData
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar issues para Relatório PCP:', error.message);
+
+    if (error.response) {
+      return res.status(error.response.status).json({
+        success: false,
+        message: `Erro na API do Jira (${error.response.status}): ${error.response.data?.errorMessages?.[0] || error.response.statusText}`,
+        details: error.response.data
+      });
+    }
+
+    if (error.request) {
+      return res.status(503).json({
+        success: false,
+        message: 'Não foi possível conectar ao Jira. Verifique a URL e a conexão de rede.'
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar dados do Jira: ' + error.message
+    });
+  }
+};
