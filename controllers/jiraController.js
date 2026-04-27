@@ -695,6 +695,18 @@ function formatJiraDate(rawDate) {
   return String(rawDate);
 }
 
+/**
+ * Valida que a data está no formato YYYY-MM-DD aceito pela Jira API.
+ * Retorna true também para null/undefined (limpar campo).
+ */
+function isValidJiraDate(date) {
+  if (date === null || date === undefined) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) return false;
+  const [y, m, d] = String(date).split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+
 function normalizeText(value) {
   return String(value || '')
     .normalize('NFD')
@@ -1407,8 +1419,15 @@ export const reprogramarEmMassa = async (req, res) => {
       });
     }
 
-    // Data pode ser null para limpar o campo no Jira
-    const dateValue = date || null;
+    // Data pode ser null para limpar o campo no Jira (null/undefined limpa; string deve ser YYYY-MM-DD)
+    const dateValue = date ?? null;
+
+    if (!isValidJiraDate(dateValue)) {
+      return res.status(400).json({
+        success: false,
+        message: `Formato de data inválido: "${date}". Use YYYY-MM-DD ou envie null para limpar.`
+      });
+    }
 
     const jiraUrl = process.env.JIRA_URL;
     const campoPrevisao = 'customfield_10245';
@@ -1493,9 +1512,18 @@ export const reprogramarEmMassa = async (req, res) => {
     console.log(`❌ Erros: ${errorCount}`);
     console.log('='.repeat(60));
 
+    const allSuccess = errorCount === 0;
+    const partialSuccess = successCount > 0 && errorCount > 0;
+    const httpStatus = allSuccess ? 200 : partialSuccess ? 207 : 422;
+
     const responseData = {
-      success: true,
-      message: `Reprogramação concluída: ${successCount} sucesso, ${errorCount} erros`,
+      success: allSuccess,
+      partial: partialSuccess,
+      message: allSuccess
+        ? `${successCount} card(s) reprogramado(s) com sucesso.`
+        : partialSuccess
+          ? `Parcial: ${successCount} atualizado(s), ${errorCount} com falha.`
+          : `Falha: nenhum card foi atualizado (${errorCount} erro(s)).`,
       data: {
         successCount,
         errorCount,
@@ -1504,16 +1532,9 @@ export const reprogramarEmMassa = async (req, res) => {
       }
     };
 
-    console.log('📤 [RESPONSE] Preparando resposta...');
-    console.log('📦 [RESPONSE] Dados:', JSON.stringify(responseData, null, 2));
-    console.log('📡 [RESPONSE] Enviando HTTP 200...');
-    
-    res.status(200).json(responseData);
-    
-    console.log('✅ [RESPONSE] Resposta enviada com sucesso ao cliente!');
-    console.log('🎯 ============================================');
+    console.log(`📡 [RESPONSE] Enviando HTTP ${httpStatus}...`);
+    res.status(httpStatus).json(responseData);
     console.log('🎯 ENDPOINT /reprogramar-massa FINALIZADO');
-    console.log('🎯 ============================================');
 
   } catch (error) {
     console.error('❌ [ERROR] Erro na reprogramação em massa:', error);
@@ -1587,10 +1608,17 @@ export const atualizarDatasIndividuais = async (req, res) => {
       if (!issueId) {
         console.log(`⚠️ Update sem ID, pulando:`, update);
         errorCount++;
+        results.push({ id: 'UNKNOWN', success: false, message: 'ID não fornecido' });
+        continue;
+      }
+
+      if (!isValidJiraDate(dateValue ?? null)) {
+        console.log(`⚠️ ${issueId}: data inválida "${dateValue}"`);
+        errorCount++;
         results.push({
-          id: 'UNKNOWN',
+          id: issueId,
           success: false,
-          message: 'ID não fornecido'
+          message: `Formato de data inválido: "${dateValue}". Use YYYY-MM-DD.`
         });
         continue;
       }
@@ -1655,9 +1683,18 @@ export const atualizarDatasIndividuais = async (req, res) => {
     console.log(`❌ Erros: ${errorCount}`);
     console.log('='.repeat(60));
 
+    const allSuccess = errorCount === 0;
+    const partialSuccess = successCount > 0 && errorCount > 0;
+    const httpStatus = allSuccess ? 200 : partialSuccess ? 207 : 422;
+
     const responseData = {
-      success: true,
-      message: `Atualização concluída: ${successCount} sucesso, ${errorCount} erros`,
+      success: allSuccess,
+      partial: partialSuccess,
+      message: allSuccess
+        ? `${successCount} data(s) atualizada(s) com sucesso.`
+        : partialSuccess
+          ? `Parcial: ${successCount} atualizada(s), ${errorCount} com falha.`
+          : `Falha: nenhuma data foi atualizada (${errorCount} erro(s)).`,
       data: {
         successCount,
         errorCount,
@@ -1666,16 +1703,9 @@ export const atualizarDatasIndividuais = async (req, res) => {
       }
     };
 
-    console.log('📤 [RESPONSE] Preparando resposta...');
-    console.log('📦 [RESPONSE] Dados:', JSON.stringify(responseData, null, 2));
-    console.log('📡 [RESPONSE] Enviando HTTP 200...');
-    
-    res.status(200).json(responseData);
-    
-    console.log('✅ [RESPONSE] Resposta enviada com sucesso ao cliente!');
-    console.log('🎯 ============================================');
+    console.log(`📡 [RESPONSE] Enviando HTTP ${httpStatus}...`);
+    res.status(httpStatus).json(responseData);
     console.log('🎯 ENDPOINT /atualizar-datas-individuais FINALIZADO');
-    console.log('🎯 ============================================');
 
   } catch (error) {
     console.error('❌ [ERROR] Erro na atualização de datas individuais:', error);
