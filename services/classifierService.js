@@ -71,7 +71,7 @@ function mergeItem(dbProject, card, plansOverride) {
  *              plate dimensions match the selected filter (Aramida only).
  *
  * PENDING      Matching plan(s) found, but at least one issue:
- *              NO_ATTACHMENT | NO_LABELING | NO_CUTTING.
+ *              NO_ATTACHMENT | NO_CUTTING | NO_LABEL_8C | NO_LABEL_9C | NO_LABEL_11C | NO_LABEL_TENSYLON.
  *
  * READY        Matching plan(s) found, zero issues.
  *

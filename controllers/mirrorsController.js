@@ -194,7 +194,7 @@ function validateProjectFiles(proj) {
   }
 
   if (validInfoCount === 0) {
-    errors.push({ type: 'VALIDATION_ERROR', file: null, reason: 'nenhum InfoProject válido e acessível encontrado' });
+    errors.push({ type: 'VALIDATION_ERROR', file: null, reason: 'nenhum arquivo de projeto válido e acessível encontrado' });
   }
 
   return errors;
@@ -214,13 +214,13 @@ async function buildOsPdf(proj, meta, log) {
   for (const plan of (proj.cutting_plans || [])) {
     for (const infoAtt of (plan.attachments || []).filter(a => a.type === 'infoproject')) {
       if (seenInfoIds.has(infoAtt.file?.id)) {
-        log.push(`  [SKP] InfoProject "${infoAtt.file?.name}": duplicado`);
+        log.push(`  [SKP] DocProject "${infoAtt.file?.name}": duplicado`);
         continue;
       }
       seenInfoIds.add(infoAtt.file?.id);
 
       if (!infoAtt.file?.path || !fs.existsSync(infoAtt.file.path)) {
-        throw new Error(`InfoProject "${infoAtt.file?.name}" não encontrado: ${infoAtt.file?.path}`);
+        throw new Error(`DocProject "${infoAtt.file?.name}" não encontrado: ${infoAtt.file?.path}`);
       }
 
       const bytes = await retry(() => fs.promises.readFile(infoAtt.file.path));
@@ -228,12 +228,12 @@ async function buildOsPdf(proj, meta, log) {
       const copied = await pdf.copyPages(infoPdf, infoPdf.getPageIndices());
       copied.forEach(p => pdf.addPage(p));
       infoPagesTotal += copied.length;
-      log.push(`  [OK] InfoProject "${infoAtt.file.name}": ${copied.length} pág(s) incluída(s)`);
+      log.push(`  [OK] DocProject "${infoAtt.file.name}": ${copied.length} pág(s) incluída(s)`);
     }
   }
 
-  if (infoPagesTotal === 0) throw new Error('Nenhuma página InfoProject foi incluída no PDF');
-  log.push(`  [OK] InfoProject total: ${infoPagesTotal} pág(s)`);
+  if (infoPagesTotal === 0) throw new Error('Nenhuma página DocProject foi incluída no PDF');
+  log.push(`  [OK] DocProject total: ${infoPagesTotal} pág(s)`);
 
   await appendLastPage(pdf, proj, meta);
   log.push('  [OK] Contracapa gerada');
