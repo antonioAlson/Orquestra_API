@@ -120,6 +120,30 @@ export async function fetchProjectsByIds(ids) {
 }
 
 /**
+ * Fetch distinct plate dimensions from all cutting plans.
+ * Returns sorted pairs formatted as { value: "1.60x3.00", label: "1,60m × 3,00m" }.
+ *
+ * @returns {Promise<{ value: string, label: string }[]>}
+ */
+export async function fetchDistinctDimensions() {
+  const { rows } = await pool.query(`
+    SELECT DISTINCT plate_width, plate_height
+    FROM maestro.cutting_plan
+    WHERE plate_width IS NOT NULL AND plate_height IS NOT NULL
+    ORDER BY plate_width, plate_height
+  `);
+
+  return rows.map(({ plate_width, plate_height }) => {
+    const w = (plate_width  / 1000).toFixed(2);
+    const h = (plate_height / 1000).toFixed(2);
+    return {
+      value: `${w}x${h}`,
+      label: `${w.replace('.', ',')}m × ${h.replace('.', ',')}m`,
+    };
+  });
+}
+
+/**
  * @typedef {Object} DbProject
  * @property {number}   id
  * @property {string}   project         - project code (e.g. "MP-1234")

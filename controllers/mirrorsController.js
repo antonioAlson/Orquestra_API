@@ -7,7 +7,7 @@ import QRCode from 'qrcode';
 
 import JSZip from 'jszip';
 import { fetchJiraIssues, fetchAramidaIssues, fetchTensylonIssues, attachToJiraIssue, updateJiraIssueFields, deleteJiraAttachment, fetchJiraFields, transitionJiraIssue } from '../services/jiraService.js';
-import { fetchAllProjects, fetchProjectsByIds } from '../services/mirrorProjectRepository.js';
+import { fetchAllProjects, fetchProjectsByIds, fetchDistinctDimensions } from '../services/mirrorProjectRepository.js';
 import { classifyAll } from '../services/classifierService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -454,6 +454,21 @@ export const generateOS = async (req, res) => {
     return res.end(zipBuffer);
   } catch (error) {
     console.error('[Mirrors] generateOS error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ─── GET /api/mirrors/dimensions ────────────────────────────────────────────
+//
+// Returns all distinct plate dimensions stored in cutting_plan.
+// Response: { success: true, data: [{ value: "1.60x3.00", label: "1,60m × 3,00m" }] }
+//
+export const getDimensions = async (req, res) => {
+  try {
+    const dimensions = await fetchDistinctDimensions();
+    return res.json({ success: true, data: dimensions });
+  } catch (error) {
+    console.error('[Mirrors] getDimensions error:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
