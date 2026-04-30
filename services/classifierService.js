@@ -71,7 +71,8 @@ function mergeItem(dbProject, card, plansOverride) {
     osNumber:        card.osNumber,
     veiculo:         card.veiculo,
     numeroProjeto:   card.numeroProjeto,
-    status:          card.status || '',
+    status:          card.status     || '',
+    statusJira:      card.statusJira || '',
   };
 }
 
@@ -140,7 +141,8 @@ export function classifyAll(jiraCards, dbProjects, dimensionStr, material) {
         resumo:        card.resumo,
         veiculo:       card.veiculo,
         osNumber:      card.osNumber,
-        status:        card.status || '',
+        status:        card.status     || '',
+        statusJira:    card.statusJira || '',
       });
       continue;
     }

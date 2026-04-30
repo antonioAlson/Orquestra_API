@@ -68,7 +68,7 @@ async function _doFetch(userId, jql, cacheKey) {
   const { email, apiToken } = await getCredentials(userId);
   const authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`;
 
-  const fieldsStr = 'summary,status,customfield_11298,customfield_10245,customfield_11353';
+  const fieldsStr = 'summary,status,customfield_11298,customfield_10245,customfield_11353,customfield_10039';
   const allRaw    = [];
   let nextPageToken = null;
 
@@ -340,6 +340,15 @@ function normalizeIssue(issue) {
   // OS number: last long numeric sequence found in the summary
   const osMatches = String(f.summary || '').match(/\b(\d{4,10})\b/g);
 
+  // Extract statusJira from customfield_10039 (dropdown or plain text)
+  let statusJira = '';
+  const sjRaw = f.customfield_10039;
+  if (sjRaw && typeof sjRaw === 'object') {
+    statusJira = String(sjRaw.value || sjRaw.name || '').trim();
+  } else if (sjRaw) {
+    statusJira = String(sjRaw).trim();
+  }
+
   // Determine material from Jira project key prefix
   const isTensylonCard = String(issue.key).toUpperCase().startsWith('TENSYLON');
 
@@ -351,7 +360,8 @@ function normalizeIssue(issue) {
     previsao: String(f.customfield_10245 || ''),
     osNumber: osMatches ? osMatches[osMatches.length - 1] : '',
     isTensylonCard,
-    status: String(f.status?.name || ''),
+    status:     String(f.status?.name || ''),
+    statusJira,
   };
 }
 
