@@ -6,7 +6,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import QRCode from 'qrcode';
 
 import JSZip from 'jszip';
-import { fetchJiraIssues, fetchAramidaIssues, fetchTensylonIssues, attachToJiraIssue, updateJiraIssueFields, deleteJiraAttachment, fetchJiraFields, transitionJiraIssue } from '../services/jiraService.js';
+import { fetchJiraIssues, fetchAramidaIssues, fetchTensylonIssues, fetchPrevisaoMantaIssues, fetchPrevisaoTensylonIssues, attachToJiraIssue, updateJiraIssueFields, deleteJiraAttachment, fetchJiraFields, transitionJiraIssue } from '../services/jiraService.js';
 import { fetchAllProjects, fetchProjectsByIds, fetchDistinctDimensions } from '../services/mirrorProjectRepository.js';
 import { classifyAll } from '../services/classifierService.js';
 
@@ -137,6 +137,87 @@ export const getTensylonProjects = async (req, res) => {
     return res.json({ success: true, data: result });
   } catch (error) {
     console.error('[Mirrors] getTensylonProjects error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ─── GET /api/mirrors/previsao-material ─────────────────────────────────────
+//
+// Returns all active Jira cards (MANTA + TENSYLON) enriched with DB cutting
+// plan data — no classification into buckets. Intended for material forecast.
+//
+// Response:
+//   { success: true, data: { manta: [...], tensylon: [...] } }
+//   Each item: DB fields + Jira fields. Cards with no DB match are included
+//   with empty cutting_plans so the caller can detect missing cadastros.
+//
+export const getPrevisaoMaterial = async (req, res) => {
+  try {
+    const [dbProjects, mantaCards, tensylonCards] = await Promise.all([
+      fetchAllProjects(),
+      fetchPrevisaoMantaIssues(req.user.id).catch(err => {
+        console.warn('[Mirrors] Jira Previsão MANTA indisponível:', err.message);
+        return [];
+      }),
+      fetchPrevisaoTensylonIssues(req.user.id).catch(err => {
+        console.warn('[Mirrors] Jira Previsão TENSYLON indisponível:', err.message);
+        return [];
+      }),
+    ]);
+
+    const dbMap = new Map();
+    for (const p of dbProjects) {
+      if (p.project) dbMap.set(String(p.project).trim().toUpperCase(), p);
+    }
+
+    const enrichCards = (cards) => cards.map(card => {
+      const np = String(card.numeroProjeto || '').trim().toUpperCase();
+      const db = np ? dbMap.get(np) : null;
+
+      if (db) {
+        return {
+          id:              db.id,
+          project:         db.project,
+          material_type:   db.material_type,
+          brand:           db.brand,
+          model:           db.model,
+          total_parts_qty: db.total_parts_qty,
+          cutting_plans:   db.cutting_plans || [],
+          jiraKey:         card.jiraKey,
+          osNumber:        card.osNumber,
+          veiculo:         card.veiculo,
+          numeroProjeto:   card.numeroProjeto,
+          status:          card.status     || '',
+          statusJira:      card.statusJira || '',
+        };
+      }
+
+      return {
+        id:              null,
+        project:         card.numeroProjeto || '',
+        material_type:   card.isTensylonCard ? 'TENSYLON' : 'ARAMIDA',
+        brand:           '',
+        model:           card.veiculo || card.resumo || '',
+        total_parts_qty: null,
+        cutting_plans:   [],
+        jiraKey:         card.jiraKey,
+        osNumber:        card.osNumber,
+        veiculo:         card.veiculo,
+        numeroProjeto:   card.numeroProjeto,
+        status:          card.status     || '',
+        statusJira:      card.statusJira || '',
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        manta:    enrichCards(mantaCards),
+        tensylon: enrichCards(tensylonCards),
+      },
+    });
+  } catch (error) {
+    console.error('[Mirrors] getPrevisaoMaterial error:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

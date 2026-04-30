@@ -12,6 +12,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { registrarGeracaoEspelhos } from '../utils/espelhos-logger.js';
 import { decrypt } from '../utils/crypto.js';
 import pool from '../config/database.js';
+import { fetchAllProjects } from '../services/mirrorProjectRepository.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -933,11 +934,11 @@ export const getJiraIssues = async (req, res) => {
     const url = `${jiraUrl}/rest/api/3/search/jql`;
     const auth = Buffer.from(`${email}:${apiToken}`).toString('base64');
 
-    console.log('📡 URL:', url);
-    console.log('📧 Email:', email);
-    console.log('🔑 Token presente:', !!apiToken);
-    console.log('🔍 JQL:', jql);
-    console.log('📅 Filtro sem data:', semData);
+    console.log(' URL:', url);
+    console.log(' Email:', email);
+    console.log(' Token presente:', !!apiToken);
+    console.log(' JQL:', jql);
+    console.log(' Filtro sem data:', semData);
 
     const situacoesValidas = [
       '⚪️RECEBIDO ENCAMINHADO',
@@ -3669,6 +3670,36 @@ export const getPCPRelatorio = async (req, res) => {
       const veiculoB = (b.veiculo || '').toLowerCase();
       return veiculoA.localeCompare(veiculoB);
     });
+
+    // Enrich with DB project data: project code + plate dimensions from cutting plans
+    try {
+      const dbProjects = await fetchAllProjects();
+      const dbMap = new Map();
+      for (const p of dbProjects) {
+        if (p.project) dbMap.set(String(p.project).trim().toUpperCase(), p);
+      }
+      for (const item of processedData) {
+        const np = String(item.numeroProjeto || '').trim().toUpperCase();
+        const dbProject = np && np !== '-' ? dbMap.get(np) : null;
+        if (dbProject) {
+          const dims = new Set();
+          for (const plan of (dbProject.cutting_plans || [])) {
+            if (plan.plate_width && plan.plate_height) {
+              const w = (Number(plan.plate_width) / 1000).toFixed(2).replace('.', ',');
+              const h = (Number(plan.plate_height) / 1000).toFixed(2).replace('.', ',');
+              dims.add(`${w}m×${h}m`);
+            }
+          }
+          item.projeto  = dbProject.project || item.numeroProjeto || '';
+          item.tamanhos = [...dims].join(', ') || '—';
+        } else {
+          item.projeto  = item.numeroProjeto && item.numeroProjeto !== '-' ? item.numeroProjeto : '';
+          item.tamanhos = '—';
+        }
+      }
+    } catch (dbErr) {
+      console.warn('[getPCPRelatorio] Enriquecimento DB falhou (não crítico):', dbErr.message);
+    }
 
     console.log(`✅ [PCP RELATORIO] ${processedData.length} issues processadas`);
 

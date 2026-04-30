@@ -26,6 +26,18 @@ const JQL_TENSYLON =
 
 const JQL_COMBINED = `(${JQL_ARAMIDA}) OR (${JQL_TENSYLON})`;
 
+const SITUACAO_FILTER =
+  `("situação[short text]" ~ "🔴RECEBIDO NÃO LIBERADO" ` +
+  `OR "situação[short text]" ~ "⚪️RECEBIDO ENCAMINHADO" ` +
+  `OR "situação[short text]" ~ "⚫Aguardando entrada" ` +
+  `OR "situação[short text]" ~ "🟢RECEBIDO LIBERADO")`;
+
+const JQL_PREVISAO_MANTA =
+  `(project = MANTA AND status IN ("A Produzir", "Liberado Engenharia") AND ${SITUACAO_FILTER})`;
+
+const JQL_PREVISAO_TENSYLON =
+  `(project = TENSYLON AND status IN ("A Produzir", "Liberado Engenharia") AND ${SITUACAO_FILTER})`;
+
 /**
  * Retrieve and decrypt a user's Jira credentials from the database.
  * Throws a descriptive error if the token is missing or cannot be decrypted.
@@ -140,6 +152,14 @@ export async function fetchAramidaIssues(userId) {
  */
 export async function fetchTensylonIssues(userId) {
   return fetchByJql(userId, JQL_TENSYLON, `${userId}:tensylon`);
+}
+
+export async function fetchPrevisaoMantaIssues(userId) {
+  return fetchByJql(userId, JQL_PREVISAO_MANTA, `${userId}:previsao-manta`);
+}
+
+export async function fetchPrevisaoTensylonIssues(userId) {
+  return fetchByJql(userId, JQL_PREVISAO_TENSYLON, `${userId}:previsao-tensylon`);
 }
 
 /**
