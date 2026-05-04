@@ -30,6 +30,7 @@ const SITUACAO_FILTER =
   `("situação[short text]" ~ "🔴RECEBIDO NÃO LIBERADO" ` +
   `OR "situação[short text]" ~ "⚪️RECEBIDO ENCAMINHADO" ` +
   `OR "situação[short text]" ~ "⚫Aguardando entrada" ` +
+  `OR "situação[short text]" ~ "⚫AGUARDANDO ENTRADA" ` +
   `OR "situação[short text]" ~ "🟢RECEBIDO LIBERADO")`;
 
 const JQL_PREVISAO_MANTA =
@@ -360,13 +361,13 @@ function normalizeIssue(issue) {
   // OS number: last long numeric sequence found in the summary
   const osMatches = String(f.summary || '').match(/\b(\d{4,10})\b/g);
 
-  // Extract statusJira from customfield_10039 (dropdown or plain text)
-  let statusJira = '';
+  // Extract situacao from customfield_10039 (dropdown or plain text)
+  let situacao = '';
   const sjRaw = f.customfield_10039;
   if (sjRaw && typeof sjRaw === 'object') {
-    statusJira = String(sjRaw.value || sjRaw.name || '').trim();
+    situacao = String(sjRaw.value || sjRaw.name || '').trim();
   } else if (sjRaw) {
-    statusJira = String(sjRaw).trim();
+    situacao = String(sjRaw).trim();
   }
 
   // Determine material from Jira project key prefix
@@ -381,7 +382,7 @@ function normalizeIssue(issue) {
     osNumber: osMatches ? osMatches[osMatches.length - 1] : '',
     isTensylonCard,
     status:     String(f.status?.name || ''),
-    statusJira,
+    situacao,
   };
 }
 

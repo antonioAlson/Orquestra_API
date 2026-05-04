@@ -188,7 +188,7 @@ export const getPrevisaoMaterial = async (req, res) => {
           veiculo:         card.veiculo,
           numeroProjeto:   card.numeroProjeto,
           status:          card.status     || '',
-          statusJira:      card.statusJira || '',
+          situacao:        card.situacao   || '',
         };
       }
 
@@ -205,7 +205,7 @@ export const getPrevisaoMaterial = async (req, res) => {
         veiculo:         card.veiculo,
         numeroProjeto:   card.numeroProjeto,
         status:          card.status     || '',
-        statusJira:      card.statusJira || '',
+        situacao:        card.situacao   || '',
       };
     });
 
