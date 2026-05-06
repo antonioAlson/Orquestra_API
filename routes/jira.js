@@ -5,9 +5,9 @@ import {
   getContecIssues,
   getPCPRelatorio,
   reprogramarEmMassa,
-  reprogramarDatasComtec,
   atualizarDatasIndividuais,
   buscarArquivosPorIds,
+  imprimirOpsPorIds,
   downloadArquivo,
   downloadArquivoJira,
   gerarEspelhos,
@@ -45,14 +45,14 @@ router.get('/pcp-relatorio', authenticate, getPCPRelatorio);
 // Reprogramar múltiplas issues em massa
 router.post('/reprogramar-massa', authenticate, reprogramarEmMassa);
 
-// Reprogramar datas Comtec automaticamente
-router.post('/reprogramar-datas-comtec', authenticate, reprogramarDatasComtec);
-
 // Atualizar datas individuais (cada issue com data diferente)
 router.post('/atualizar-datas-individuais', authenticate, atualizarDatasIndividuais);
 
 // Buscar arquivos por IDs
 router.post('/buscar-arquivos', authenticate, buscarArquivosPorIds);
+
+// Mesclar e retornar PDF único para impressão em lote
+router.post('/imprimir-ops', authenticate, imprimirOpsPorIds);
 
 // Download de arquivo específico
 router.get('/download-arquivo/:cardId/:directory/*', authenticate, downloadArquivo);

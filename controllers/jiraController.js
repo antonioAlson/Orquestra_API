@@ -1828,6 +1828,166 @@ export const buscarArquivosPorIds = async (req, res) => {
 };
 
 /**
+ * Mescla PDFs de múltiplos cards e retorna um único PDF para impressão
+ */
+export const imprimirOpsPorIds = async (req, res) => {
+  console.log('🖨️ ============================================');
+  console.log('🖨️ ENDPOINT /imprimir-ops INICIADO');
+  console.log('🖨️ ============================================');
+
+  try {
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Lista de IDs é obrigatória e deve ser um array não vazio'
+      });
+    }
+
+    const credentials = await getUserJiraCredentials(req.user.id);
+    const { email, apiToken } = credentials;
+
+    const basePdfPath = process.env.PDF_BASE_PATH || 'C:\\OPs';
+    const jiraUrl = process.env.JIRA_URL;
+    const auth = (email && apiToken) ? Buffer.from(`${email}:${apiToken}`).toString('base64') : null;
+
+    console.log(`📁 Mesclando PDFs para ${ids.length} cards`);
+
+    let basePathEntries = null;
+    try {
+      basePathEntries = await fs.promises.readdir(basePdfPath, { withFileTypes: true });
+    } catch {
+      console.log('⚠️ Diretório local não acessível. Busca apenas no Jira.');
+    }
+
+    // Coleta entradas com caminhos reais (sem gerar URLs)
+    const pdfEntries = [];
+    const errors = [];
+
+    await Promise.all(ids.map(async (cardId) => {
+      try {
+        // Arquivos locais
+        if (basePathEntries) {
+          const matchingDirs = findCardDirectories(basePathEntries, cardId);
+          for (const dirName of matchingDirs) {
+            const absoluteDir = path.join(basePdfPath, dirName);
+            const files = await walkFiles(absoluteDir);
+            for (const relFile of files) {
+              if (path.extname(relFile).toLowerCase() === '.pdf') {
+                pdfEntries.push({
+                  cardId,
+                  name: path.basename(relFile),
+                  source: 'local',
+                  absolutePath: path.join(absoluteDir, relFile)
+                });
+              }
+            }
+          }
+        }
+
+        // Anexos do Jira
+        if (jiraUrl && auth) {
+          try {
+            const response = await axios.get(
+              `${jiraUrl}/rest/api/3/issue/${encodeURIComponent(cardId)}?fields=attachment`,
+              { headers: { Accept: 'application/json', Authorization: `Basic ${auth}` } }
+            );
+            const attachments = response.data?.fields?.attachment || [];
+            for (const att of attachments) {
+              if (path.extname(att.filename || '').toLowerCase() === '.pdf') {
+                pdfEntries.push({
+                  cardId,
+                  name: att.filename,
+                  source: 'jira',
+                  contentUrl: att.content,
+                  size: att.size || 0
+                });
+              }
+            }
+          } catch (err) {
+            if (err?.response?.status !== 404) {
+              console.error(`❌ Jira erro ${cardId}:`, err.message);
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`❌ Erro ao buscar card ${cardId}:`, err.message);
+        errors.push({ cardId, name: '-', message: err.message });
+      }
+    }));
+
+    // Deduplicar
+    const dedupMap = new Map();
+    pdfEntries.forEach((entry) => {
+      const key = `${normalizeCardId(entry.cardId)}|${normalizeCardId(entry.name)}|${entry.size || 0}`;
+      if (!dedupMap.has(key)) dedupMap.set(key, entry);
+    });
+    const uniqueEntries = Array.from(dedupMap.values());
+
+    if (uniqueEntries.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nenhum PDF encontrado para os cards informados.',
+        errors
+      });
+    }
+
+    console.log(`📄 ${uniqueEntries.length} PDFs encontrados. Iniciando mesclagem...`);
+
+    // Mesclar PDFs com pdf-lib
+    const merged = await PDFDocument.create();
+
+    for (const entry of uniqueEntries) {
+      try {
+        let buf;
+        if (entry.source === 'local') {
+          buf = await fs.promises.readFile(entry.absolutePath);
+        } else {
+          const fileRes = await axios.get(entry.contentUrl, {
+            responseType: 'arraybuffer',
+            headers: { Authorization: `Basic ${auth}` }
+          });
+          buf = Buffer.from(fileRes.data);
+        }
+
+        const doc = await PDFDocument.load(buf, { ignoreEncryption: true });
+        const pages = await merged.copyPages(doc, doc.getPageIndices());
+        pages.forEach((p) => merged.addPage(p));
+        console.log(`✅ Mesclado: ${entry.cardId}/${entry.name}`);
+      } catch (err) {
+        console.error(`❌ PDF inválido: ${entry.cardId}/${entry.name} - ${err.message}`);
+        errors.push({ cardId: entry.cardId, name: entry.name, message: err.message });
+      }
+    }
+
+    if (merged.getPageCount() === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Todos os PDFs encontrados estão corrompidos ou inválidos.',
+        errors
+      });
+    }
+
+    const pdfBytes = await merged.save();
+    console.log(`🖨️ PDF final: ${merged.getPageCount()} páginas, ${errors.length} erro(s)`);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="ops-impressao-${Date.now()}.pdf"`);
+    res.setHeader('X-Print-Errors', JSON.stringify(errors));
+    res.setHeader('Access-Control-Expose-Headers', 'X-Print-Errors');
+    res.send(Buffer.from(pdfBytes));
+
+  } catch (error) {
+    console.error('❌ Erro ao mesclar PDFs para impressão:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao mesclar PDFs: ' + error.message
+    });
+  }
+};
+
+/**
  * Faz download de um arquivo específico
  */
 export const downloadArquivo = async (req, res) => {
@@ -3551,36 +3711,6 @@ export const obterMarcasUnicas = async (req, res) => {
 /**
  * Reprograma datas Comtec automaticamente (próximo dia útil)
  */
-export const reprogramarDatasComtec = async (req, res) => {
-  console.log('🎯 ============================================');
-  console.log('🎯 ENDPOINT /reprogramar-datas-comtec INICIADO');
-  console.log('🎯 ============================================');
-
-  try {
-    console.log('🚀 Iniciando reprogramação automática de datas Comtec...');
-
-    // Import dinâmico da função processar
-    const { processar } = await import('../cron_jobs/update_comtec_cards.cjs');
-
-    // Chamar a função processar do script update_comtec_cards.cjs
-    await processar();
-
-    console.log('✅ Reprogramação de datas Comtec concluída com sucesso');
-
-    return res.status(200).json({
-      success: true,
-      message: 'Datas Comtec reprogramadas com sucesso'
-    });
-
-  } catch (error) {
-    console.error('❌ Erro ao reprogramar datas Comtec:', error);
-    return res.status(500).json({
-      success: false,
-      message: `Erro ao reprogramar datas Comtec: ${error.message}`
-    });
-  }
-};
-
 /**
  * Busca todas as issues para o relatório geral de PCP
  */
