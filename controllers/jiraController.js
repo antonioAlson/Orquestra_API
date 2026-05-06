@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { registrarGeracaoEspelhos } from '../utils/espelhos-logger.js';
+import { prepararCardParaDuplex } from '../utils/pdfDuplex.js';
 import { decrypt } from '../utils/crypto.js';
 import pool from '../config/database.js';
 import { fetchAllProjects } from '../services/mirrorProjectRepository.js';
@@ -1933,32 +1934,59 @@ export const imprimirOpsPorIds = async (req, res) => {
       });
     }
 
-    console.log(`📄 ${uniqueEntries.length} PDFs encontrados. Iniciando mesclagem...`);
+    console.log(`📄 ${uniqueEntries.length} PDFs encontrados. Iniciando mesclagem com regras duplex...`);
 
-    // Mesclar PDFs com pdf-lib
+    // Agrupa entradas por cardId preservando a ordem dos IDs solicitados
+    const entriesByCard = new Map();
+    ids.forEach((id) => entriesByCard.set(normalizeCardId(id), []));
+    uniqueEntries.forEach((entry) => {
+      const key = normalizeCardId(entry.cardId);
+      if (!entriesByCard.has(key)) entriesByCard.set(key, []);
+      entriesByCard.get(key).push(entry);
+    });
+
+    // PDF final — cada card entra já tratado para duplex
     const merged = await PDFDocument.create();
 
-    for (const entry of uniqueEntries) {
-      try {
-        let buf;
-        if (entry.source === 'local') {
-          buf = await fs.promises.readFile(entry.absolutePath);
-        } else {
-          const fileRes = await axios.get(entry.contentUrl, {
-            responseType: 'arraybuffer',
-            headers: { Authorization: `Basic ${auth}` }
-          });
-          buf = Buffer.from(fileRes.data);
-        }
+    for (const [cardKey, entries] of entriesByCard) {
+      if (!entries.length) continue;
 
-        const doc = await PDFDocument.load(buf, { ignoreEncryption: true });
-        const pages = await merged.copyPages(doc, doc.getPageIndices());
-        pages.forEach((p) => merged.addPage(p));
-        console.log(`✅ Mesclado: ${entry.cardId}/${entry.name}`);
-      } catch (err) {
-        console.error(`❌ PDF inválido: ${entry.cardId}/${entry.name} - ${err.message}`);
-        errors.push({ cardId: entry.cardId, name: entry.name, message: err.message });
+      // 1. Une todos os arquivos do card em um PDF intermediário
+      const intermediate = await PDFDocument.create();
+      for (const entry of entries) {
+        try {
+          let buf;
+          if (entry.source === 'local') {
+            buf = await fs.promises.readFile(entry.absolutePath);
+          } else {
+            const fileRes = await axios.get(entry.contentUrl, {
+              responseType: 'arraybuffer',
+              headers: { Authorization: `Basic ${auth}` }
+            });
+            buf = Buffer.from(fileRes.data);
+          }
+          const doc = await PDFDocument.load(buf, { ignoreEncryption: true });
+          const pages = await intermediate.copyPages(doc, doc.getPageIndices());
+          pages.forEach((p) => intermediate.addPage(p));
+          console.log(`✅ Lido: ${entry.cardId}/${entry.name}`);
+        } catch (err) {
+          console.error(`❌ PDF inválido: ${entry.cardId}/${entry.name} - ${err.message}`);
+          errors.push({ cardId: entry.cardId, name: entry.name, message: err.message });
+        }
       }
+
+      if (intermediate.getPageCount() === 0) continue;
+
+      // 2. Aplica regra de impressão frente-e-verso neste card
+      //    → se ímpar, insere página em branco na posição 2 (verso da capa)
+      const intermediateBytes = await intermediate.save();
+      const duplexBytes = await prepararCardParaDuplex(intermediateBytes);
+      const duplexDoc = await PDFDocument.load(duplexBytes, { ignoreEncryption: true });
+
+      // 3. Copia as páginas tratadas para o PDF final
+      const pages = await merged.copyPages(duplexDoc, duplexDoc.getPageIndices());
+      pages.forEach((p) => merged.addPage(p));
+      console.log(`🖨️ Card ${cardKey}: ${duplexDoc.getPageCount()} pág. (duplex aplicado)`);
     }
 
     if (merged.getPageCount() === 0) {
