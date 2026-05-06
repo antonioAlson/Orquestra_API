@@ -152,6 +152,35 @@ export async function ensureDatabaseCompatibility() {
   await ensureCuttingPlansTable();
   await ensureCuttingPlanAttachmentTable();
   await ensureAuditTables();
+  await ensureQualityCertificatesTable();
+}
+
+async function ensureQualityCertificatesTable() {
+  await runCompatibilityQuery(`
+    CREATE TABLE IF NOT EXISTS maestro.quality_certificates (
+      id                       SERIAL PRIMARY KEY,
+      numero                   TEXT NOT NULL,
+      certificado              TEXT,
+      paineis_balisticos       TEXT,
+      produtos                 JSONB NOT NULL DEFAULT '[]'::jsonb,
+      nota_fiscal              TEXT,
+      veiculo                  TEXT,
+      data_emissao             DATE,
+      material                 TEXT DEFAULT 'Dupont Kevlar® S745GR',
+      norma                    TEXT DEFAULT 'ABNT NBR 15000:2020-2',
+      nivel                    TEXT DEFAULT 'III-A',
+      certificados_conformidade JSONB NOT NULL DEFAULT '[]'::jsonb,
+      garantia_anos            INTEGER DEFAULT 5,
+      created_by               INTEGER REFERENCES maestro.users(id),
+      created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at               TIMESTAMPTZ
+    )
+  `, 'maestro.quality_certificates');
+
+  await runCompatibilityQuery(`
+    CREATE INDEX IF NOT EXISTS quality_certificates_numero_idx
+      ON maestro.quality_certificates (numero)
+  `, 'quality_certificates_numero_idx');
 }
 
 async function ensureAuditTables() {

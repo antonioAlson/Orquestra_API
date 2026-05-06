@@ -9,6 +9,7 @@ import cuttingProjectsRoutes from './routes/cuttingPlans.js';
 import filesRoutes from './routes/files.js';
 import mirrorsRoutes from './routes/mirrors.js';
 import auditRoutes from './routes/audit.js';
+import qualityRoutes from './routes/quality.js';
 import { ensureDatabaseCompatibility } from './config/database.js';
 
 // Carregar variáveis de ambiente
@@ -56,6 +57,7 @@ app.use('/api/cutting-projects', cuttingProjectsRoutes);
 app.use('/api/files',            filesRoutes);
 app.use('/api/mirrors',          mirrorsRoutes);
 app.use('/api/audit',            auditRoutes);
+app.use('/api/quality',          qualityRoutes);
 
 // Rota 404
 app.use((req, res) => {
