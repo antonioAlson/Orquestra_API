@@ -646,99 +646,180 @@ export const getJiraFieldsList = async (req, res) => {
 };
 
 // ─── PDF helpers ─────────────────────────────────────────────────────────────
-
 export async function appendFirstPage(mergedPdf, project, meta, packageNumber) {
   const doc = await PDFDocument.create();
   const page = doc.addPage([595.28, 841.89]);
   const { width, height } = page.getSize();
+
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
   const font = await doc.embedFont(StandardFonts.Helvetica);
 
   const backendRoot = path.join(__dirname, '..');
+
   const footerCandidates = [
     path.join(backendRoot, 'scripts', 'projetos', 'logo-footer.png'),
     path.join(backendRoot, 'scripts', 'projetos', 'footer.png'),
   ];
+
   const footerPath = footerCandidates.find(c => fs.existsSync(c));
   const topLogoPath = path.join(backendRoot, 'scripts', 'projetos', 'logo.png');
 
   const marginLeft = 58;
-  const isTensylonProject = String(project.material_type || '').toUpperCase() === 'TENSYLON';
+
+  const isTensylonProject =
+    String(project.material_type || '').toUpperCase() === 'TENSYLON';
 
   // ── Logo ──────────────────────────────────────────────────────────────────
   let yPos = height - 100;
+
   if (fs.existsSync(topLogoPath)) {
     try {
       let logoBytes = await fs.promises.readFile(topLogoPath);
+
       if (logoBytes.toString('utf8', 0, 8).startsWith('iVBORw0K')) {
         logoBytes = Buffer.from(logoBytes.toString('utf8'), 'base64');
       }
+
       const logoImg = await doc.embedPng(logoBytes);
+
       const logoW = 130;
       const logoH = (logoImg.height / logoImg.width) * logoW;
-      page.drawImage(logoImg, { x: (width - logoW) / 2, y: yPos - 10, width: logoW, height: logoH });
+
+      page.drawImage(logoImg, {
+        x: (width - logoW) / 2,
+        y: yPos - 10,
+        width: logoW,
+        height: logoH,
+      });
+
       yPos -= 18;
     } catch {
-      page.drawText('OPERA', { x: width / 2 - 30, y: yPos, size: 16, font: fontBold, color: rgb(0.4, 0.6, 0.8) });
+      page.drawText('OPERA', {
+        x: width / 2 - 30,
+        y: yPos,
+        size: 16,
+        font: fontBold,
+        color: rgb(0.4, 0.6, 0.8),
+      });
+
       yPos -= 15;
-      page.drawText('Armouring Materials', { x: width / 2 - 45, y: yPos, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
+
+      page.drawText('Armouring Materials', {
+        x: width / 2 - 45,
+        y: yPos,
+        size: 9,
+        font,
+        color: rgb(0.5, 0.5, 0.5),
+      });
     }
   } else {
-    page.drawText('OPERA', { x: width / 2 - 30, y: yPos, size: 16, font: fontBold, color: rgb(0.4, 0.6, 0.8) });
+    page.drawText('OPERA', {
+      x: width / 2 - 30,
+      y: yPos,
+      size: 16,
+      font: fontBold,
+      color: rgb(0.4, 0.6, 0.8),
+    });
+
     yPos -= 15;
-    page.drawText('Armouring Materials', { x: width / 2 - 45, y: yPos, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
+
+    page.drawText('Armouring Materials', {
+      x: width / 2 - 45,
+      y: yPos,
+      size: 9,
+      font,
+      color: rgb(0.5, 0.5, 0.5),
+    });
   }
 
-  // ── "Pacote N – Kit" top right ────────────────────────────────────────────
+  // ── Pacote ────────────────────────────────────────────────────────────────
   const pkgLabel = `Pacote ${packageNumber} - Kit`;
+
   const pkgW = fontBold.widthOfTextAtSize(pkgLabel, 10);
+
   page.drawText(pkgLabel, {
-    x: width - marginLeft - pkgW, y: height - 45,
-    size: 10, font: fontBold, color: rgb(0.16, 0.44, 0.72),
+    x: width - marginLeft - pkgW,
+    y: height - 45,
+    size: 10,
+    font: fontBold,
+    color: rgb(0.16, 0.44, 0.72),
   });
 
   // ── Material badge ────────────────────────────────────────────────────────
   const tituloMaterial = isTensylonProject ? 'Tensylon' : 'Aramida';
+
   const titleSize = 21;
   const titleW = fontBold.widthOfTextAtSize(tituloMaterial, titleSize);
   const titleX = width / 2 - titleW / 2;
-  yPos -= 50;
-  page.drawRectangle({ x: titleX - 8, y: yPos - 4, width: titleW + 16, height: titleSize + 7, color: rgb(1, 0.95, 0.2) });
-  page.drawText(tituloMaterial, { x: titleX, y: yPos, size: titleSize, font: fontBold, color: rgb(0, 0, 0) });
 
-  // ── Helper: centred text in a box ─────────────────────────────────────────
-  const drawCentered = (text, bx, by, bw, bh, size, useBold, color) => {
+  yPos -= 50;
+
+  page.drawRectangle({
+    x: titleX - 8,
+    y: yPos - 4,
+    width: titleW + 16,
+    height: titleSize + 7,
+    color: rgb(1, 0.95, 0.2),
+  });
+
+  page.drawText(tituloMaterial, {
+    x: titleX,
+    y: yPos,
+    size: titleSize,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+
+  // ── Helper ────────────────────────────────────────────────────────────────
+  const drawCentered = (
+    text,
+    bx,
+    by,
+    bw,
+    bh,
+    size,
+    useBold,
+    color
+  ) => {
     const f = useBold ? fontBold : font;
     const v = String(text || '');
+
     const tw = f.widthOfTextAtSize(v, size);
-    page.drawText(v, { x: bx + (bw - tw) / 2, y: by + (bh - size) / 2 + 2, size, font: f, color });
+
+    page.drawText(v, {
+      x: bx + (bw - tw) / 2,
+      y: by + (bh - size) / 2 + 2,
+      size,
+      font: f,
+      color,
+    });
   };
 
-  // ── Document fields ───────────────────────────────────────────────────────
+  // ── Regras ────────────────────────────────────────────────────────────────
+  const regras = [
+    ['B.E.V-TFM', 'Full Tensylon'],
+    ['B.E.V-TPM', 'Tensylon Parcial'],
+    ['B.E.V-M', 'Padrão'],
+    ['TFM', 'Full Tensylon'],
+    ['TPM', 'Tensylon Parcial'],
+    ['M', 'Padrão'],
+  ];
+
+  const regra = regras.find(([prefixo]) =>
+    (project.project || '').startsWith(prefixo)
+  );
+
+  const kit = regra ? regra[1] : '-';
+
+  // ── Campos ────────────────────────────────────────────────────────────────
   yPos -= 60;
+
   const lineHeight = 45;
   const fieldSize = 16;
 
-  const regras = [
-    ["B.E.V-TFM", "Full Tensylon"],
-    ["B.E.V-TPM", "Tensylon Parcial"],
-    ["B.E.V-M", "Padrão"],
-    ["TFM", "Full Tensylon"],
-    ["TPM", "Tensylon Parcial"],
-    ["M", "Padrão"],
-  ];
-
-  // encontra a regra
-  const regra = regras.find(([prefixo]) =>
-    (project.project || "").startsWith(prefixo)
-  );
-
-  // variável final com fallback
-  const kit = regra ? regra[1] : "-";
-
   const fields = [
     ['Modelo:', `${project.brand || ' '} ${project.model || '-'}`],
-    ['Kit:', kit], 
+    ['Kit:', kit],
     ['Tipo de teto:', project.roof_config || '-'],
     ['Projeto:', project.project || '-'],
     ['Data:', new Date().toLocaleDateString('pt-BR')],
@@ -746,107 +827,297 @@ export async function appendFirstPage(mergedPdf, project, meta, packageNumber) {
     ['OS:', meta.osNumber || '-'],
   ];
 
-  // Aggregate square_meters across all plans (first non-empty value per key)
-  // Always format with 3 decimal places so trailing zeros are preserved (e.g. 9.020).
+  // ── Square meters ─────────────────────────────────────────────────────────
   const sqm = {};
+
   for (const plan of (project.cutting_plans || [])) {
     for (const [k, v] of Object.entries(plan.square_meters || {})) {
-      if (v == null || String(v).trim() === '' || sqm[k] !== undefined) continue;
+      if (
+        v == null ||
+        String(v).trim() === '' ||
+        sqm[k] !== undefined
+      ) {
+        continue;
+      }
+
       const n = parseFloat(String(v).replace(',', '.'));
-      sqm[k] = Number.isFinite(n) ? n.toFixed(3) : String(v).trim();
+
+      sqm[k] = Number.isFinite(n)
+        ? n.toFixed(3)
+        : String(v).trim();
     }
   }
 
+  // ── Render fields ─────────────────────────────────────────────────────────
   for (const [label, value] of fields) {
-    page.drawText(label, { x: marginLeft, y: yPos, size: fieldSize, font: fontBold, color: rgb(0, 0, 0) });
+    page.drawText(label, {
+      x: marginLeft,
+      y: yPos,
+      size: fieldSize,
+      font: fontBold,
+      color: rgb(0, 0, 0),
+    });
+
     const lw = fontBold.widthOfTextAtSize(label, fieldSize);
-    page.drawText(String(value), { x: marginLeft + lw + 6, y: yPos, size: fieldSize, font, color: rgb(0, 0, 0) });
+
+    page.drawText(String(value), {
+      x: marginLeft + lw + 6,
+      y: yPos,
+      size: fieldSize,
+      font,
+      color: rgb(0, 0, 0),
+    });
+
     yPos -= lineHeight;
 
-    // Consumption table immediately after OS field (Aramida only)
-    // All 3 columns are always rendered; value cell is filled only when sqm > 0.
     if (label === 'OS:' && !isTensylonProject) {
-      const consumoKeys   = ['8C', '9C', '11C'];
-      const consumoColors = [rgb(0.08, 0.08, 0.95), rgb(0.1, 0.45, 0.13), rgb(0.95, 0.05, 0.05)];
-      const tableW    = Math.min((width - marginLeft * 2) * 0.88, 520);
-      const colW      = tableW / 3;
-      const hdrH      = 30;
-      const valH      = 26;
-      const labelY    = yPos - 6;
+      const consumoKeys = ['8C', '9C', '11C'];
+
+      const consumoColors = [
+        rgb(0.08, 0.08, 0.95),
+        rgb(0.1, 0.45, 0.13),
+        rgb(0.95, 0.05, 0.05),
+      ];
+
+      const tableW = Math.min(
+        (width - marginLeft * 2) * 0.88,
+        520
+      );
+
+      const colW = tableW / 3;
+
+      const hdrH = 30;
+      const valH = 26;
+
+      const labelY = yPos - 6;
       const tableTopY = labelY - 10 - hdrH;
 
-      page.drawText('Consumo (m²):', { x: marginLeft, y: labelY, size: fieldSize, font: fontBold, color: rgb(0, 0, 0) });
+      page.drawText('Consumo (m²):', {
+        x: marginLeft,
+        y: labelY,
+        size: fieldSize,
+        font: fontBold,
+        color: rgb(0, 0, 0),
+      });
 
       for (let i = 0; i < 3; i++) {
         const cx = marginLeft + i * colW;
-        page.drawRectangle({ x: cx, y: tableTopY, width: colW, height: hdrH, color: consumoColors[i], borderColor: rgb(0, 0, 0), borderWidth: 1 });
-        drawCentered(consumoKeys[i], cx, tableTopY, colW, hdrH, 14, false, rgb(1, 1, 1));
+
+        page.drawRectangle({
+          x: cx,
+          y: tableTopY,
+          width: colW,
+          height: hdrH,
+          color: consumoColors[i],
+          borderColor: rgb(0, 0, 0),
+          borderWidth: 1,
+        });
+
+        drawCentered(
+          consumoKeys[i],
+          cx,
+          tableTopY,
+          colW,
+          hdrH,
+          14,
+          false,
+          rgb(1, 1, 1)
+        );
       }
+
       const valY = tableTopY - valH;
+
       for (let i = 0; i < 3; i++) {
         const key = consumoKeys[i];
-        const cx  = marginLeft + i * colW;
-        const n   = parseFloat(String(sqm[key] || '').replace(',', '.'));
-        const val = Number.isFinite(n) && n > 0 ? sqm[key] : '';
-        page.drawRectangle({ x: cx, y: valY, width: colW, height: valH, color: rgb(1, 1, 1), borderColor: rgb(0, 0, 0), borderWidth: 1 });
-        drawCentered(val, cx, valY, colW, valH, 13, false, rgb(0, 0, 0));
+        const cx = marginLeft + i * colW;
+
+        const n = parseFloat(
+          String(sqm[key] || '').replace(',', '.')
+        );
+
+        const val =
+          Number.isFinite(n) && n > 0
+            ? sqm[key]
+            : '';
+
+        page.drawRectangle({
+          x: cx,
+          y: valY,
+          width: colW,
+          height: valH,
+          color: rgb(1, 1, 1),
+          borderColor: rgb(0, 0, 0),
+          borderWidth: 1,
+        });
+
+        drawCentered(
+          val,
+          cx,
+          valY,
+          colW,
+          valH,
+          13,
+          false,
+          rgb(0, 0, 0)
+        );
       }
+
       yPos = valY - 18;
     }
   }
 
-  // ── QR code ───────────────────────────────────────────────────────────────
-  const qrPayload = [project.model, project.roof_config, project.project, meta.osNumber]
-    .filter(v => String(v || '').trim()).join('\n');
+  // ── QR ────────────────────────────────────────────────────────────────────
+  const qrPayload = [
+    project.model,
+    project.roof_config,
+    project.project,
+    meta.osNumber,
+  ]
+    .filter(v => String(v || '').trim())
+    .join('\n');
 
-  const qrDataUrl = await QRCode.toDataURL(qrPayload || project.project || '', { margin: 1, width: 300 });
-  const qrBytes = Buffer.from(qrDataUrl.split(',')[1], 'base64');
+  const qrDataUrl = await QRCode.toDataURL(
+    qrPayload || project.project || '',
+    {
+      margin: 1,
+      width: 300,
+    }
+  );
+
+  const qrBytes = Buffer.from(
+    qrDataUrl.split(',')[1],
+    'base64'
+  );
+
   const qrImg = await doc.embedPng(qrBytes);
 
   yPos -= 30;
+
   const qrSize = 92;
   const qrX = width / 2 - qrSize / 2;
   const qrY = yPos - qrSize;
 
-  // ── Footer background image ───────────────────────────────────────────────
+  // ── Footer image ──────────────────────────────────────────────────────────
   if (footerPath) {
     try {
       let fBytes = await fs.promises.readFile(footerPath);
+
       if (fBytes.toString('utf8', 0, 8).startsWith('iVBORw0K')) {
-        fBytes = Buffer.from(fBytes.toString('utf8'), 'base64');
+        fBytes = Buffer.from(
+          fBytes.toString('utf8'),
+          'base64'
+        );
       }
+
       const fImg = await doc.embedPng(fBytes);
+
       const fH = (fImg.height / fImg.width) * width;
-      page.drawImage(fImg, { x: 0, y: 0, width, height: fH, opacity: 0.9 });
-    } catch { /* footer image optional */ }
+
+      page.drawImage(fImg, {
+        x: 0,
+        y: 0,
+        width,
+        height: fH,
+        opacity: 0.9,
+      });
+    } catch {}
   }
 
   // ── Footer text ───────────────────────────────────────────────────────────
   const footerY = 80;
-  ['Avenida Tucunaré 421', 'Tamboré • Barueri – SP', 'CEP 06460-020', '+55 11 0000 0000', 'www.opera.security']
-    .forEach((line, i) => page.drawText(line, { x: marginLeft - 28, y: footerY - i * 10, size: 7, font, color: rgb(0.36, 0.36, 0.36) }));
+
+  [
+    'Avenida Tucunaré 421',
+    'Tamboré • Barueri – SP',
+    'CEP 06460-020',
+    '+55 11 0000 0000',
+    'www.opera.security',
+  ].forEach((line, i) => {
+    page.drawText(line, {
+      x: marginLeft - 28,
+      y: footerY - i * 10,
+      size: 7,
+      font,
+      color: rgb(0.36, 0.36, 0.36),
+    });
+  });
 
   // ── Social icons ──────────────────────────────────────────────────────────
   const iconFill = rgb(0.08, 0.36, 0.56);
+
   const iconsY = footerY - 56;
   const iconStartX = marginLeft - 21;
-  [{ label: 'IG', size: 5.2 }, { label: 'f', size: 8.5 }, { label: 'YT', size: 4.8 }, { label: 'in', size: 5.6 }]
-    .forEach(({ label, size }, idx) => {
-      const cx = iconStartX + idx * 20;
-      page.drawCircle({ x: cx, y: iconsY, size: 7, color: iconFill });
-      const tw = fontBold.widthOfTextAtSize(label, size);
-      page.drawText(label, { x: cx - tw / 2, y: iconsY - size / 3, size, font: fontBold, color: rgb(1, 1, 1) });
+
+  [
+    { label: 'IG', size: 5.2 },
+    { label: 'f', size: 8.5 },
+    { label: 'YT', size: 4.8 },
+    { label: 'in', size: 5.6 },
+  ].forEach(({ label, size }, idx) => {
+    const cx = iconStartX + idx * 20;
+
+    page.drawCircle({
+      x: cx,
+      y: iconsY,
+      size: 7,
+      color: iconFill,
     });
 
-  // ── QR drawn last (on top) ────────────────────────────────────────────────
-  page.drawImage(qrImg, { x: qrX, y: qrY, width: qrSize, height: qrSize });
+    const tw = fontBold.widthOfTextAtSize(label, size);
+
+    page.drawText(label, {
+      x: cx - tw / 2,
+      y: iconsY - size / 3,
+      size,
+      font: fontBold,
+      color: rgb(1, 1, 1),
+    });
+  });
+
+  // ── Generation timestamp ──────────────────────────────────────────────────
+  const now = new Date();
+
+  const pad = (n) => String(n).padStart(2, '0');
+
+  const generatedAt =
+    `Gerado em: ${pad(now.getDate())}/` +
+    `${pad(now.getMonth() + 1)}/` +
+    `${String(now.getFullYear()).slice(-2)} ` +
+    `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+  page.drawText(generatedAt, {
+    x: marginLeft - 28,
+    y: iconsY - 22,
+    size: 6.5,
+    font,
+    color: rgb(0.36, 0.36, 0.36),
+  });
+
+  // ── QR Draw ───────────────────────────────────────────────────────────────
+  page.drawImage(qrImg, {
+    x: qrX,
+    y: qrY,
+    width: qrSize,
+    height: qrSize,
+  });
 
   const revText = 'FO 21.1 - REV. 1';
-  const revW = font.widthOfTextAtSize(revText, 7);
-  page.drawText(revText, { x: qrX + qrSize / 2 - revW / 2, y: qrY - 12, size: 7, font, color: rgb(0.42, 0.42, 0.42) });
 
+  const revW = font.widthOfTextAtSize(revText, 7);
+
+  page.drawText(revText, {
+    x: qrX + qrSize / 2 - revW / 2,
+    y: qrY - 12,
+    size: 7,
+    font,
+    color: rgb(0.42, 0.42, 0.42),
+  });
+
+  // ── Merge ─────────────────────────────────────────────────────────────────
   const built = await PDFDocument.load(await doc.save());
+
   const [copied] = await mergedPdf.copyPages(built, [0]);
+
   mergedPdf.addPage(copied);
 }
 
