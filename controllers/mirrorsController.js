@@ -5,6 +5,7 @@ import { dirname } from 'path';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
+import { createCanvas } from 'canvas';
 
 import JSZip from 'jszip';
 import { fetchJiraIssues, fetchAramidaIssues, fetchTensylonIssues, fetchPrevisaoMantaIssues, fetchPrevisaoTensylonIssues, attachToJiraIssue, updateJiraIssueFields, deleteJiraAttachment, fetchJiraFields, transitionJiraIssue } from '../services/jiraService.js';
